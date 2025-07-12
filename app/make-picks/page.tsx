@@ -1,0 +1,408 @@
+"use client"
+
+import { useEffect, useState } from "react"
+import { useAuth } from "@/hooks/use-auth"
+import { useLeague } from "@/hooks/use-league"
+import { getUpcomingGames, makePick, getPicksRemaining } from "@/lib/api"
+import type { Game } from "@/types/game"
+import type { Team } from "@/types/team"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { format, isPast, addHours } from "date-fns"
+import { CheckCircle, AlertCircle, Clock, ListChecks, X } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import Image from "next/image"
+import { LeagueGuard } from "@/components/league-guard"
+
+function MakePicksContent() {
+  const { user } = useAuth()
+  const { currentLeague } = useLeague()
+  const [games, setGames] = useState<Game[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selectedTeams, setSelectedTeams] = useState<Record<number, number>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const [success, setSuccess] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [currentWeek, setCurrentWeek] = useState(8) // Default to week 8
+  const [picksRemaining, setPicksRemaining] = useState<{ team: Team; remaining: number }[]>([])
+  const [loadingPicksRemaining, setLoadingPicksRemaining] = useState(true)
+  const [userPickForWeek, setUserPickForWeek] = useState<number | null>(null)
+  const [showTeamsModal, setShowTeamsModal] = useState(false)
+
+  // Weeks for the season
+  const weeks = Array.from({ length: 38 }, (_, i) => i + 1)
+
+  useEffect(() => {
+    const fetchData = async () => {
+      if (user && currentLeague) {
+        try {
+          setLoading(true)
+          const data = await getUpcomingGames(currentWeek, currentLeague.id)
+          setGames(data)
+
+          // Check if user has already made a pick for this week
+          const userPick = data.find((game) => game.userPick && game.userPick.user === user?.id)
+
+          if (userPick) {
+            setUserPickForWeek(userPick.userPick.team.id)
+            setSelectedTeams({ [userPick.id]: userPick.userPick.team.id })
+          } else {
+            setUserPickForWeek(null)
+            setSelectedTeams({})
+          }
+        } catch (error) {
+          console.error("Error fetching games data:", error)
+        } finally {
+          setLoading(false)
+        }
+
+        try {
+          setLoadingPicksRemaining(true)
+          const remainingData = await getPicksRemaining(user.id, currentLeague.id)
+          setPicksRemaining(remainingData)
+        } catch (error) {
+          console.error("Error fetching picks remaining data:", error)
+        } finally {
+          setLoadingPicksRemaining(false)
+        }
+      }
+    }
+
+    fetchData()
+  }, [user, currentLeague, currentWeek])
+
+  const handleTeamSelect = (gameId: number, teamId: number) => {
+    // In survivor league, you can only pick one team per week
+    // So we clear any previous selections for other games in the same week
+    setSelectedTeams({ [gameId]: teamId })
+  }
+
+  const handleSubmitPick = async (gameId: number) => {
+    if (!user || !currentLeague) return
+
+    const teamId = selectedTeams[gameId]
+    if (!teamId) return
+
+    setSubmitting(true)
+    setSuccess(null)
+    setError(null)
+
+    try {
+      const game = games.find((g) => g.id === gameId)
+      const team = game?.homeTeam.id === teamId ? game.homeTeam : game?.awayTeam
+
+      await makePick(user.id, gameId, teamId, currentLeague.id)
+      setSuccess(`Successfully picked ${team?.name} for Week ${currentWeek}`)
+
+      // Update the user's pick for this week
+      setUserPickForWeek(teamId)
+
+      // Refresh picks remaining
+      const remainingData = await getPicksRemaining(user.id, currentLeague.id)
+      setPicksRemaining(remainingData)
+    } catch (error) {
+      console.error("Error submitting pick:", error)
+      setError("Failed to submit pick. Please try again.")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // Check if a game has already started or been played
+  const isGamePast = (game: Game) => {
+    // Add a buffer of 2 hours to account for game duration
+    return isPast(addHours(new Date(game.date), 2)) || game.status === "completed"
+  }
+
+  // Check if a team has already been used
+  const isTeamUsed = (teamId: number) => {
+    const team = picksRemaining.find((p) => p.team.id === teamId)
+    return team ? team.remaining === 0 : false
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center">
+          <h1 className="text-2xl font-heading mr-4">Make Picks</h1>
+
+          <Button variant="outline" size="sm" className="border-2 border-black" onClick={() => setShowTeamsModal(true)}>
+            <ListChecks className="h-4 w-4 mr-2" />
+            Available Teams
+          </Button>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="text-right">
+            <div className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</div>
+            <div className="font-heading text-sm">{currentLeague?.name}</div>
+          </div>
+          <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={60} height={60} />
+        </div>
+      </div>
+
+      {/* Custom Modal for Available Teams */}
+      {showTeamsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
+          <div className="bg-background border-4 border-black max-w-md w-full max-h-[80vh] overflow-hidden rounded-none">
+            <div className="p-4 bg-retro-orange text-white border-b-4 border-black flex justify-between items-center">
+              <h2 className="font-heading text-xl">Available Teams</h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white hover:bg-retro-orange/80"
+                onClick={() => setShowTeamsModal(false)}
+              >
+                <X className="h-5 w-5" />
+              </Button>
+            </div>
+            <div className="p-4 max-h-[60vh] overflow-y-auto">
+              {loadingPicksRemaining ? (
+                <div className="space-y-2">
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                  <Skeleton className="h-10 w-full" />
+                </div>
+              ) : picksRemaining.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {picksRemaining
+                    .sort((a, b) => b.remaining - a.remaining)
+                    .map((pick) => (
+                      <div
+                        key={pick.team.id}
+                        className={`p-3 border-2 border-black flex justify-between items-center ${
+                          pick.remaining > 0 ? "bg-white dark:bg-gray-900" : "bg-gray-100 dark:bg-gray-800"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <img src={pick.team.logo || "/placeholder.svg"} alt={pick.team.name} className="w-6 h-6" />
+                          <span className="font-medium text-sm">{pick.team.name}</span>
+                        </div>
+                        <span
+                          className={`text-sm font-bold ${
+                            pick.remaining > 0 ? "text-green-600 dark:text-green-400" : "text-red-500"
+                          }`}
+                        >
+                          {pick.remaining > 0 ? "Available" : "Used"}
+                        </span>
+                      </div>
+                    ))}
+                </div>
+              ) : (
+                <div className="text-center py-4">
+                  <p className="text-muted-foreground">No team data available.</p>
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t-2 border-black">
+              <Button variant="pixel" className="w-full" onClick={() => setShowTeamsModal(false)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {success && (
+        <Alert variant="success" className="border-4 border-black">
+          <CheckCircle className="h-4 w-4" />
+          <AlertTitle>Success</AlertTitle>
+          <AlertDescription>{success}</AlertDescription>
+        </Alert>
+      )}
+
+      {error && (
+        <Alert variant="destructive" className="border-4 border-black">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Error</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      <Card className="border-4 border-black">
+        <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
+          <div className="flex justify-between items-center">
+            <CardTitle className="text-xl">Week {currentWeek} - Choose One Team</CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white text-black border-2 border-black"
+                onClick={() => setCurrentWeek((prev) => Math.max(1, prev - 1))}
+              >
+                Prev
+              </Button>
+              <select
+                value={currentWeek}
+                onChange={(e) => setCurrentWeek(Number(e.target.value))}
+                className="bg-white text-black border-2 border-black px-2 py-1 font-heading text-sm"
+              >
+                {weeks.map((week) => (
+                  <option key={week} value={week}>
+                    Week {week}
+                  </option>
+                ))}
+              </select>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white text-black border-2 border-black"
+                onClick={() => setCurrentWeek((prev) => Math.min(38, prev + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+          <CardDescription className="text-white/80">
+            Remember: You can only pick each team once per season!
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="pt-6">
+          {loading ? (
+            <div className="space-y-4">
+              <Skeleton className="h-[200px] w-full rounded-lg" />
+              <Skeleton className="h-[200px] w-full rounded-lg" />
+            </div>
+          ) : games.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {games.map((game) => {
+                const isPastGame = isGamePast(game)
+                const isHomeTeamUsed = isTeamUsed(game.homeTeam.id)
+                const isAwayTeamUsed = isTeamUsed(game.awayTeam.id)
+                const isDisabled =
+                  isPastGame ||
+                  (userPickForWeek !== null &&
+                    userPickForWeek !== game.homeTeam.id &&
+                    userPickForWeek !== game.awayTeam.id)
+
+                return (
+                  <Card
+                    key={game.id}
+                    className={`border-2 border-black shadow-pixel ${isDisabled ? "opacity-60" : ""}`}
+                  >
+                    <CardHeader className="pb-2">
+                      <div className="flex justify-between items-center">
+                        <CardTitle className="text-lg">Match {game.id}</CardTitle>
+                        {isPastGame && (
+                          <div className="bg-red-500 text-white px-2 py-1 flex items-center gap-1 border-2 border-black">
+                            {game.status === "completed" ? (
+                              <>
+                                <X className="h-4 w-4" />
+                                <span className="text-xs font-heading">PLAYED</span>
+                              </>
+                            ) : (
+                              <>
+                                <Clock className="h-4 w-4" />
+                                <span className="text-xs font-heading">LIVE</span>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <CardDescription>{format(new Date(game.date), "EEEE, MMMM d, yyyy 'at' h:mm a")}</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex justify-between items-center">
+                        <div
+                          className={`flex flex-col items-center p-4 rounded-none border-2 cursor-pointer transition-colors ${
+                            isDisabled
+                              ? "border-gray-300 cursor-not-allowed"
+                              : isHomeTeamUsed
+                                ? "border-red-300 bg-red-50 dark:bg-red-900/20 cursor-not-allowed"
+                                : selectedTeams[game.id] === game.homeTeam.id
+                                  ? "bg-retro-orange text-white border-black"
+                                  : "hover:bg-accent border-transparent"
+                          }`}
+                          onClick={() => {
+                            if (!isDisabled && !isHomeTeamUsed) {
+                              handleTeamSelect(game.id, game.homeTeam.id)
+                            }
+                          }}
+                        >
+                          <img
+                            src={game.homeTeam.logo || "/placeholder.svg"}
+                            alt={game.homeTeam.name}
+                            className="w-12 h-12 mb-2"
+                          />
+                          <span className="font-medium">{game.homeTeam.name}</span>
+                          <span className="text-sm">(Home)</span>
+                          {isHomeTeamUsed && <span className="text-xs text-red-500 mt-1 font-bold">Already Used</span>}
+                        </div>
+
+                        <div className="text-center">
+                          <span className="text-xl font-bold font-heading">VS</span>
+                        </div>
+
+                        <div
+                          className={`flex flex-col items-center p-4 rounded-none border-2 cursor-pointer transition-colors ${
+                            isDisabled
+                              ? "border-gray-300 cursor-not-allowed"
+                              : isAwayTeamUsed
+                                ? "border-red-300 bg-red-50 dark:bg-red-900/20 cursor-not-allowed"
+                                : selectedTeams[game.id] === game.awayTeam.id
+                                  ? "bg-retro-orange text-white border-black"
+                                  : "hover:bg-accent border-transparent"
+                          }`}
+                          onClick={() => {
+                            if (!isDisabled && !isAwayTeamUsed) {
+                              handleTeamSelect(game.id, game.awayTeam.id)
+                            }
+                          }}
+                        >
+                          <img
+                            src={game.awayTeam.logo || "/placeholder.svg"}
+                            alt={game.awayTeam.name}
+                            className="w-12 h-12 mb-2"
+                          />
+                          <span className="font-medium">{game.awayTeam.name}</span>
+                          <span className="text-sm">(Away)</span>
+                          {isAwayTeamUsed && <span className="text-xs text-red-500 mt-1 font-bold">Already Used</span>}
+                        </div>
+                      </div>
+                    </CardContent>
+                    <CardFooter>
+                      <Button
+                        variant="pixel"
+                        className="w-full"
+                        disabled={
+                          !selectedTeams[game.id] ||
+                          submitting ||
+                          isPastGame ||
+                          (isHomeTeamUsed && selectedTeams[game.id] === game.homeTeam.id) ||
+                          (isAwayTeamUsed && selectedTeams[game.id] === game.awayTeam.id)
+                        }
+                        onClick={() => handleSubmitPick(game.id)}
+                      >
+                        {submitting
+                          ? "Submitting..."
+                          : userPickForWeek === selectedTeams[game.id]
+                            ? "Change Pick"
+                            : "Submit Pick"}
+                      </Button>
+                    </CardFooter>
+                  </Card>
+                )
+              })}
+            </div>
+          ) : (
+            <Card className="border-2 border-black">
+              <CardContent className="text-center py-8">
+                <p className="text-muted-foreground">
+                  No upcoming games available for Week {currentWeek} or you've already made your pick.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  )
+}
+
+export default function MakePicksPage() {
+  return (
+    <LeagueGuard>
+      <MakePicksContent />
+    </LeagueGuard>
+  )
+}
