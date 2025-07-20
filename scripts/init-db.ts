@@ -13,18 +13,26 @@ async function initializeDatabase() {
     
     // Create a demo user
     const demoUser = await createUser(
-      'demo@example.com',
-      'demo_user',
+      'sameerdemo@gmail.com',
+      'stdemo',
       'password123'
     )
     console.log('✓ Demo user created:', demoUser.email)
     
+    // Create 2nd demo user
+    const demoUserV = await createUser(
+      'vikramdemo@gmail.com',
+      'vtdemo',
+      'password123'
+    )
+    console.log('✓ Demo user created:', demoUserV.email)
+    
     // Create a demo league
     const demoLeague = await createLeague(
-      'Demo EPL League',
-      'A demo Premier League survivor league',
+      'Demo League',
+      'A demo survivor league',
       'EPL',
-      '2024-25',
+      '2025-26',
       true,
       false,
       demoUser.id
@@ -42,7 +50,7 @@ async function initializeDatabase() {
     
     console.log('\nDatabase initialization complete!')
     console.log('You can now login with:')
-    console.log('  Email: demo@example.com')
+    console.log('  Email: <name>demo@example.com')
     console.log('  Password: password123')
     
   } catch (error) {
