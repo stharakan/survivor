@@ -1,0 +1,92 @@
+import { z } from 'zod'
+
+// API Response wrapper type
+export type ApiResponse<T> = {
+  success: boolean
+  data?: T
+  error?: string
+  message?: string
+}
+
+// Common API Error class
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public statusCode: number = 500,
+    public code?: string
+  ) {
+    super(message)
+    this.name = 'ApiError'
+  }
+}
+
+// Validation schemas using Zod
+export const loginSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+})
+
+export const createLeagueSchema = z.object({
+  name: z.string().min(1, 'League name is required'),
+  description: z.string().min(1, 'Description is required'),
+  sportsLeague: z.string().min(1, 'Sports league is required'),
+  season: z.string().min(1, 'Season is required'),
+  isPublic: z.boolean().default(false),
+  requiresApproval: z.boolean().default(true),
+})
+
+export const joinLeagueSchema = z.object({
+  teamName: z.string().min(1, 'Team name is required'),
+  message: z.string().optional(),
+})
+
+export const makePickSchema = z.object({
+  gameId: z.number().int().positive('Invalid game ID'),
+  teamId: z.number().int().positive('Invalid team ID'),
+})
+
+export const updateMemberSchema = z.object({
+  isPaid: z.boolean().optional(),
+  isAdmin: z.boolean().optional(),
+})
+
+// Request type inference
+export type LoginRequest = z.infer<typeof loginSchema>
+export type CreateLeagueRequest = z.infer<typeof createLeagueSchema>
+export type JoinLeagueRequest = z.infer<typeof joinLeagueSchema>
+export type MakePickRequest = z.infer<typeof makePickSchema>
+export type UpdateMemberRequest = z.infer<typeof updateMemberSchema>
+
+// Helper function to create API responses
+export function createApiResponse<T>(
+  success: boolean,
+  data?: T,
+  error?: string,
+  message?: string
+): ApiResponse<T> {
+  return { success, data, error, message }
+}
+
+// Helper function to handle API errors
+export function handleApiError(error: unknown): Response {
+  console.error('API Error:', error)
+  
+  if (error instanceof ApiError) {
+    return Response.json(
+      createApiResponse(false, undefined, error.message),
+      { status: error.statusCode }
+    )
+  }
+  
+  if (error instanceof z.ZodError) {
+    return Response.json(
+      createApiResponse(false, undefined, 'Validation error: ' + error.errors.map(e => e.message).join(', ')),
+      { status: 400 }
+    )
+  }
+  
+  return Response.json(
+    createApiResponse(false, undefined, 'Internal server error'),
+    { status: 500 }
+  )
+}

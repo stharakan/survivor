@@ -4,7 +4,7 @@ import type React from "react"
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import type { League, LeagueMembership } from "@/types/league"
-import { getUserLeagues } from "@/lib/api"
+import { getUserLeagues } from "@/lib/api-client"
 import { useAuth } from "./use-auth"
 
 // Define league context type

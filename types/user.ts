@@ -1,7 +1,7 @@
 import type { LeagueMembership } from "./league"
 
 export type User = {
-  id: number
+  id: string
   username: string
   email: string
   leagues?: LeagueMembership[]

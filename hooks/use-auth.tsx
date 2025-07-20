@@ -4,13 +4,8 @@ import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-
-// Define user type
-type User = {
-  id: number
-  username: string
-  email: string
-}
+import { loginUser, logoutUser, verifyUser } from "@/lib/api-client"
+import type { User } from "@/types/user"
 
 // Define auth context type
 type AuthContextType = {
@@ -33,13 +28,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // In a real app, you would verify the token with your backend
-        const storedUser = localStorage.getItem("user")
-        if (storedUser) {
-          setUser(JSON.parse(storedUser))
-        }
+        // Verify token with backend API
+        const { user } = await verifyUser()
+        setUser(user)
       } catch (error) {
         console.error("Authentication error:", error)
+        // Clear any stale auth state
+        setUser(null)
       } finally {
         setLoading(false)
       }
@@ -52,17 +47,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     setLoading(true)
     try {
-      // In a real app, you would make an API call to your Django backend
-      // For demo purposes, we'll simulate a successful login
-      const mockUser = {
-        id: 1,
-        username: "demo_user",
-        email: email,
-      }
-
-      // Store user in localStorage
-      localStorage.setItem("user", JSON.stringify(mockUser))
-      setUser(mockUser)
+      // Call the real API
+      const { user } = await loginUser(email, password)
+      setUser(user)
       router.push("/leagues")
     } catch (error) {
       console.error("Login error:", error)
@@ -73,8 +60,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   // Logout function
-  const logout = () => {
-    localStorage.removeItem("user")
+  const logout = async () => {
+    try {
+      await logoutUser()
+    } catch (error) {
+      console.error("Logout error:", error)
+    }
+    
+    // Clear local state regardless of API call success
     localStorage.removeItem("selectedLeagueId")
     setUser(null)
     router.push("/")
