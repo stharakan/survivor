@@ -286,6 +286,298 @@ export async function getLeagueMembers(leagueId: string): Promise<LeagueMembersh
   })) as LeagueMembership[]
 }
 
+// Game operations
+export async function createGame(
+  week: number,
+  homeTeamId: number,
+  awayTeamId: number,
+  date: Date,
+  homeScore: number | null = null,
+  awayScore: number | null = null,
+  status: "scheduled" | "in_progress" | "completed" = "scheduled"
+): Promise<Game> {
+  const db = await getDatabase()
+  
+  // Get team details
+  const homeTeam = await db.collection(Collections.TEAMS).findOne({ id: homeTeamId })
+  const awayTeam = await db.collection(Collections.TEAMS).findOne({ id: awayTeamId })
+  
+  if (!homeTeam || !awayTeam) {
+    throw new Error('Team not found')
+  }
+  
+  const gameId = await getNextGameId()
+  
+  const result = await db.collection(Collections.GAMES).insertOne({
+    id: gameId,
+    week,
+    homeTeamId,
+    awayTeamId,
+    homeScore,
+    awayScore,
+    status,
+    date,
+    createdAt: new Date(),
+  })
+  
+  return {
+    id: gameId,
+    week,
+    homeTeam: {
+      id: homeTeam.id,
+      name: homeTeam.name,
+      abbreviation: homeTeam.abbreviation,
+      logo: homeTeam.logo,
+    },
+    awayTeam: {
+      id: awayTeam.id,
+      name: awayTeam.name,
+      abbreviation: awayTeam.abbreviation,
+      logo: awayTeam.logo,
+    },
+    homeScore,
+    awayScore,
+    status,
+    date: date.toISOString(),
+  } as Game
+}
+
+export async function getGamesByWeek(week: number): Promise<Game[]> {
+  const db = await getDatabase()
+  
+  const games = await db.collection(Collections.GAMES)
+    .aggregate([
+      { $match: { week } },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'homeTeamId',
+          foreignField: 'id',
+          as: 'homeTeam'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'awayTeamId',
+          foreignField: 'id',
+          as: 'awayTeam'
+        }
+      },
+      { $unwind: '$homeTeam' },
+      { $unwind: '$awayTeam' }
+    ]).toArray()
+  
+  return games.map(game => ({
+    id: game.id,
+    week: game.week,
+    homeTeam: {
+      id: game.homeTeam.id,
+      name: game.homeTeam.name,
+      abbreviation: game.homeTeam.abbreviation,
+      logo: game.homeTeam.logo,
+    },
+    awayTeam: {
+      id: game.awayTeam.id,
+      name: game.awayTeam.name,
+      abbreviation: game.awayTeam.abbreviation,
+      logo: game.awayTeam.logo,
+    },
+    homeScore: game.homeScore,
+    awayScore: game.awayScore,
+    status: game.status,
+    date: game.date.toISOString(),
+  })) as Game[]
+}
+
+// Pick operations
+export async function createPick(
+  userId: string,
+  leagueId: string,
+  gameId: number,
+  teamId: number,
+  week: number
+): Promise<Pick> {
+  const db = await getDatabase()
+  
+  // Get game and team details
+  const game = await db.collection(Collections.GAMES)
+    .aggregate([
+      { $match: { id: gameId } },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'homeTeamId',
+          foreignField: 'id',
+          as: 'homeTeam'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'awayTeamId',
+          foreignField: 'id',
+          as: 'awayTeam'
+        }
+      },
+      { $unwind: '$homeTeam' },
+      { $unwind: '$awayTeam' }
+    ]).limit(1).toArray()
+  
+  const team = await db.collection(Collections.TEAMS).findOne({ id: teamId })
+  
+  if (!game[0] || !team) {
+    throw new Error('Game or team not found')
+  }
+  
+  const pickId = await getNextPickId()
+  
+  // Determine result if game is completed
+  let result: "win" | "loss" | null = null
+  if (game[0].status === "completed" && game[0].homeScore !== null && game[0].awayScore !== null) {
+    if (teamId === game[0].homeTeamId) {
+      result = game[0].homeScore > game[0].awayScore ? "win" : "loss"
+    } else {
+      result = game[0].awayScore > game[0].homeScore ? "win" : "loss"
+    }
+  }
+  
+  const result2 = await db.collection(Collections.PICKS).insertOne({
+    id: pickId,
+    userId: new ObjectId(userId),
+    leagueId: new ObjectId(leagueId),
+    gameId,
+    teamId,
+    result,
+    week,
+    createdAt: new Date(),
+  })
+  
+  return {
+    id: pickId,
+    user: parseInt(userId), // Note: This should be fixed to use proper user ID handling
+    game: {
+      id: game[0].id,
+      week: game[0].week,
+      homeTeam: {
+        id: game[0].homeTeam.id,
+        name: game[0].homeTeam.name,
+        abbreviation: game[0].homeTeam.abbreviation,
+        logo: game[0].homeTeam.logo,
+      },
+      awayTeam: {
+        id: game[0].awayTeam.id,
+        name: game[0].awayTeam.name,
+        abbreviation: game[0].awayTeam.abbreviation,
+        logo: game[0].awayTeam.logo,
+      },
+      homeScore: game[0].homeScore,
+      awayScore: game[0].awayScore,
+      status: game[0].status,
+      date: game[0].date.toISOString(),
+    },
+    team: {
+      id: team.id,
+      name: team.name,
+      abbreviation: team.abbreviation,
+      logo: team.logo,
+    },
+    result,
+    week,
+  } as Pick
+}
+
+export async function getUserPicksByLeague(userId: string, leagueId: string): Promise<Pick[]> {
+  const db = await getDatabase()
+  
+  const picks = await db.collection(Collections.PICKS)
+    .aggregate([
+      { $match: { userId: new ObjectId(userId), leagueId: new ObjectId(leagueId) } },
+      {
+        $lookup: {
+          from: Collections.GAMES,
+          localField: 'gameId',
+          foreignField: 'id',
+          as: 'game'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'teamId',
+          foreignField: 'id',
+          as: 'team'
+        }
+      },
+      { $unwind: '$game' },
+      { $unwind: '$team' },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'game.homeTeamId',
+          foreignField: 'id',
+          as: 'game.homeTeam'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'game.awayTeamId',
+          foreignField: 'id',
+          as: 'game.awayTeam'
+        }
+      },
+      { $unwind: '$game.homeTeam' },
+      { $unwind: '$game.awayTeam' }
+    ]).toArray()
+  
+  return picks.map(pick => ({
+    id: pick.id,
+    user: parseInt(pick.userId.toString()),
+    game: {
+      id: pick.game.id,
+      week: pick.game.week,
+      homeTeam: {
+        id: pick.game.homeTeam.id,
+        name: pick.game.homeTeam.name,
+        abbreviation: pick.game.homeTeam.abbreviation,
+        logo: pick.game.homeTeam.logo,
+      },
+      awayTeam: {
+        id: pick.game.awayTeam.id,
+        name: pick.game.awayTeam.name,
+        abbreviation: pick.game.awayTeam.abbreviation,
+        logo: pick.game.awayTeam.logo,
+      },
+      homeScore: pick.game.homeScore,
+      awayScore: pick.game.awayScore,
+      status: pick.game.status,
+      date: pick.game.date.toISOString(),
+    },
+    team: {
+      id: pick.team.id,
+      name: pick.team.name,
+      abbreviation: pick.team.abbreviation,
+      logo: pick.team.logo,
+    },
+    result: pick.result,
+    week: pick.week,
+  })) as Pick[]
+}
+
+// Helper functions for ID generation
+async function getNextGameId(): Promise<number> {
+  const db = await getDatabase()
+  const lastGame = await db.collection(Collections.GAMES).findOne({}, { sort: { id: -1 } })
+  return lastGame ? lastGame.id + 1 : 1
+}
+
+async function getNextPickId(): Promise<number> {
+  const db = await getDatabase()
+  const lastPick = await db.collection(Collections.PICKS).findOne({}, { sort: { id: -1 } })
+  return lastPick ? lastPick.id + 1 : 1
+}
+
 // Initialize default data (teams, etc.)
 export async function initializeDefaultData() {
   const db = await getDatabase()
