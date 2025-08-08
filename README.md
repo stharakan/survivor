@@ -419,18 +419,200 @@ types/
 
 ## Environment Variables
 
+The application requires the following environment variables. Copy `.env.example` to `.env.local` for local development:
+
 \`\`\`env
-NEXT_PUBLIC_API_URL=http://localhost:8000/api
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+# MongoDB Configuration
+MONGODB_URI=mongodb://localhost:27017
+MONGODB_DB_NAME=survivor-league
+
+# NextAuth Configuration  
+NEXTAUTH_URL=http://localhost:3000
+NEXTAUTH_SECRET=your-secret-key-here-change-this-in-production
+
+# JWT Secret
+JWT_SECRET=your-jwt-secret-here
 \`\`\`
 
-## Installation
+## Local Development Setup
 
-1. Clone the repository
-2. Install dependencies: \`npm install\`
-3. Set up environment variables
-4. Run development server: \`npm run dev\`
-5. Ensure Django backend is running on configured URL
+1. **Clone the repository**
+   \`\`\`bash
+   git clone <repository-url>
+   cd survivor-league
+   \`\`\`
+
+2. **Install dependencies**
+   \`\`\`bash
+   npm install
+   \`\`\`
+
+3. **Set up environment variables**
+   \`\`\`bash
+   cp .env.example .env.local
+   # Edit .env.local with your local configuration
+   \`\`\`
+
+4. **Set up MongoDB**
+   - Install and start MongoDB locally, OR
+   - Use MongoDB Atlas (recommended for consistency with production)
+
+5. **Initialize the database** (optional)
+   \`\`\`bash
+   npx tsx scripts/init-db.ts
+   \`\`\`
+
+6. **Run development server**
+   \`\`\`bash
+   npm run dev
+   \`\`\`
+
+## Production Deployment to Heroku
+
+### Prerequisites
+
+1. **Heroku Account and CLI**
+   - Create account at [heroku.com](https://heroku.com)
+   - Install [Heroku CLI](https://devcenter.heroku.com/articles/heroku-cli)
+   - Login: \`heroku login\`
+
+2. **MongoDB Atlas Account**
+   - Create account at [mongodb.com/atlas](https://mongodb.com/atlas)
+   - This is required as Heroku doesn't provide MongoDB hosting
+
+### Step 1: Set Up MongoDB Atlas
+
+1. **Create a MongoDB Atlas Cluster**
+   - Log into MongoDB Atlas
+   - Create a new cluster (free tier is sufficient for testing)
+   - Wait for cluster to deploy (5-10 minutes)
+
+2. **Configure Database Access**
+   - Go to "Database Access" in Atlas dashboard
+   - Create a database user with read/write permissions
+   - Note the username and password
+
+3. **Configure Network Access**
+   - Go to "Network Access" in Atlas dashboard  
+   - Add IP Address: \`0.0.0.0/0\` (allows access from anywhere, required for Heroku)
+   - **Note**: For production, consider using Heroku's IP ranges instead
+
+4. **Get Connection String**
+   - Go to "Clusters" → Click "Connect"
+   - Choose "Connect your application"
+   - Copy the connection string (looks like: \`mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/<database>?retryWrites=true&w=majority\`)
+
+### Step 2: Deploy to Heroku
+
+1. **Create Heroku App**
+   \`\`\`bash
+   # In your project directory
+   heroku create your-app-name
+   \`\`\`
+
+2. **Set Environment Variables**
+   \`\`\`bash
+   # MongoDB Atlas connection (replace with your actual connection string)
+   heroku config:set MONGODB_URI="mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/<database>?retryWrites=true&w=majority"
+   
+   # Database name
+   heroku config:set MONGODB_DB_NAME="survivor-league"
+   
+   # NextAuth configuration (replace with your Heroku app URL)
+   heroku config:set NEXTAUTH_URL="https://your-app-name.herokuapp.com"
+   
+   # Generate secure secrets (use these commands or generate your own)
+   heroku config:set NEXTAUTH_SECRET="$(openssl rand -base64 32)"
+   heroku config:set JWT_SECRET="$(openssl rand -base64 32)"
+   \`\`\`
+
+3. **Deploy the Application**
+   \`\`\`bash
+   # Deploy current branch to Heroku
+   git push heroku main
+   \`\`\`
+
+4. **Initialize Database** (optional)
+   \`\`\`bash
+   # Run database initialization on Heroku
+   heroku run npx tsx scripts/init-db.ts
+   \`\`\`
+
+5. **Open Your Application**
+   \`\`\`bash
+   heroku open
+   \`\`\`
+
+### Step 3: Verify Deployment
+
+1. **Check Application Logs**
+   \`\`\`bash
+   heroku logs --tail
+   \`\`\`
+
+2. **Test Core Functionality**
+   - Navigate to your Heroku app URL
+   - Test login functionality
+   - Verify database connections work
+   - Test league selection and navigation
+
+### Environment Variables Reference
+
+For production deployment, configure these environment variables in Heroku:
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| \`MONGODB_URI\` | MongoDB Atlas connection string | \`mongodb+srv://user:pass@cluster.mongodb.net/db\` |
+| \`MONGODB_DB_NAME\` | Database name | \`survivor-league\` |
+| \`NEXTAUTH_URL\` | Your app's URL | \`https://your-app.herokuapp.com\` |
+| \`NEXTAUTH_SECRET\` | Random secret for NextAuth | \`openssl rand -base64 32\` |
+| \`JWT_SECRET\` | Random secret for JWT tokens | \`openssl rand -base64 32\` |
+| \`NODE_ENV\` | Environment (auto-set by Heroku) | \`production\` |
+
+### Troubleshooting
+
+**Build Failures**
+- Check \`heroku logs\` for specific errors
+- Ensure all dependencies are in \`dependencies\` not \`devDependencies\`
+- Verify Node.js version compatibility (20+)
+
+**Database Connection Issues**
+- Verify MongoDB Atlas connection string format
+- Ensure database user has proper permissions
+- Check network access allows \`0.0.0.0/0\` or Heroku IP ranges
+- Test connection string locally first
+
+**Authentication Issues**
+- Verify \`NEXTAUTH_URL\` matches your Heroku app URL exactly
+- Ensure secrets are properly generated and set
+- Check that HTTPS is used (Heroku provides this automatically)
+
+**Performance Issues**
+- Monitor app metrics in Heroku dashboard
+- Consider upgrading from free dyno for production use
+- Optimize database queries if needed
+
+### Deployment Commands Quick Reference
+
+\`\`\`bash
+# View current config
+heroku config
+
+# Set individual config vars
+heroku config:set KEY=value
+
+# View logs
+heroku logs --tail
+
+# Restart app
+heroku restart
+
+# Run commands on Heroku
+heroku run <command>
+
+# Scale dynos (for paid plans)
+heroku ps:scale web=1
+\`\`\`
 
 ## Backend Integration Notes
 
