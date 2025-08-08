@@ -152,22 +152,61 @@ export async function updateLeagueSettings(
 }
 
 export async function getUserPicks(userId: string, leagueId: number): Promise<Pick[]> {
-  throw new Error('getUserPicks not implemented yet')
+  return apiRequest(`/picks?user_id=${userId}&league_id=${leagueId}`)
 }
 
 export async function getPicksRemaining(
   userId: string,
   leagueId: number,
 ): Promise<{ team: Team; remaining: number }[]> {
-  throw new Error('getPicksRemaining not implemented yet')
+  return apiRequest(`/picks/remaining?user_id=${userId}&league_id=${leagueId}`)
 }
 
 export async function getUpcomingGames(week: number, leagueId: number): Promise<Game[]> {
-  throw new Error('getUpcomingGames not implemented yet')
+  // We need user context to include picks, but it's not in the function signature
+  // We'll need to get the current user from the auth context in the component instead
+  // For now, return games without user picks - the component will need to be updated
+  return apiRequest(`/games?week=${week}`)
 }
 
-export async function makePick(userId: string, gameId: number, teamId: number, leagueId: number): Promise<Pick> {
-  throw new Error('makePick not implemented yet')
+export async function getUpcomingGamesWithPicks(week: number, leagueId: number, userId: string): Promise<Game[]> {
+  return apiRequest(`/games?week=${week}&league_id=${leagueId}&user_id=${userId}`)
+}
+
+export async function makePick(userId: string, gameId: number, teamId: number, leagueId: number, week?: number): Promise<Pick> {
+  // If week is not provided, we need to find it by looking up the game
+  let gameWeek = week
+  
+  if (!gameWeek) {
+    // Find the game to get its week - this is expensive but necessary
+    for (let w = 1; w <= 38; w++) {
+      try {
+        const weekGames = await apiRequest<Game[]>(`/games?week=${w}`)
+        const game = weekGames.find(g => g.id === gameId)
+        if (game) {
+          gameWeek = w
+          break
+        }
+      } catch (error) {
+        // Continue searching other weeks
+      }
+    }
+    
+    if (!gameWeek) {
+      throw new Error('Could not find game to determine week')
+    }
+  }
+  
+  return apiRequest('/picks', {
+    method: 'POST',
+    body: JSON.stringify({
+      userId,
+      leagueId,
+      gameId,
+      teamId,
+      week: gameWeek,
+    }),
+  })
 }
 
 export async function getPlayerProfile(playerId: number, leagueId: number): Promise<Player | null> {

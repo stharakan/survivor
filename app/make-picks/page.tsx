@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getUpcomingGames, makePick, getPicksRemaining } from "@/lib/api"
+import { getUpcomingGamesWithPicks, makePick, getPicksRemaining } from "@/lib/api"
 import type { Game } from "@/types/game"
 import type { Team } from "@/types/team"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,7 +38,7 @@ function MakePicksContent() {
       if (user && currentLeague) {
         try {
           setLoading(true)
-          const data = await getUpcomingGames(currentWeek, currentLeague.id)
+          const data = await getUpcomingGamesWithPicks(currentWeek, currentLeague.id, user.id)
           setGames(data)
 
           // Check if user has already made a pick for this week
@@ -92,7 +92,7 @@ function MakePicksContent() {
       const game = games.find((g) => g.id === gameId)
       const team = game?.homeTeam.id === teamId ? game.homeTeam : game?.awayTeam
 
-      await makePick(user.id, gameId, teamId, currentLeague.id)
+      await makePick(user.id, gameId, teamId, currentLeague.id, currentWeek)
       setSuccess(`Successfully picked ${team?.name} for Week ${currentWeek}`)
 
       // Update the user's pick for this week

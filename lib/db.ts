@@ -565,6 +565,109 @@ export async function getUserPicksByLeague(userId: string, leagueId: string): Pr
   })) as Pick[]
 }
 
+// Get all teams
+export async function getAllTeams(): Promise<Team[]> {
+  const db = await getDatabase()
+  const teams = await db.collection(Collections.TEAMS).find().toArray()
+  
+  return teams.map(team => ({
+    id: team.id,
+    name: team.name,
+    abbreviation: team.abbreviation,
+    logo: team.logo,
+  })) as Team[]
+}
+
+// Get games by week with user picks
+export async function getGamesByWeekWithPicks(week: number, userId: string, leagueId: string): Promise<Game[]> {
+  const db = await getDatabase()
+  
+  const games = await db.collection(Collections.GAMES)
+    .aggregate([
+      { $match: { week } },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'homeTeamId',
+          foreignField: 'id',
+          as: 'homeTeam'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'awayTeamId',
+          foreignField: 'id',
+          as: 'awayTeam'
+        }
+      },
+      { $unwind: '$homeTeam' },
+      { $unwind: '$awayTeam' },
+      {
+        $lookup: {
+          from: Collections.PICKS,
+          let: { gameId: '$id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$gameId', '$$gameId'] },
+                    { $eq: ['$userId', new ObjectId(userId)] },
+                    { $eq: ['$leagueId', new ObjectId(leagueId)] }
+                  ]
+                }
+              }
+            },
+            {
+              $lookup: {
+                from: Collections.TEAMS,
+                localField: 'teamId',
+                foreignField: 'id',
+                as: 'team'
+              }
+            },
+            { $unwind: '$team' }
+          ],
+          as: 'userPick'
+        }
+      }
+    ]).toArray()
+  
+  return games.map(game => ({
+    id: game.id,
+    week: game.week,
+    homeTeam: {
+      id: game.homeTeam.id,
+      name: game.homeTeam.name,
+      abbreviation: game.homeTeam.abbreviation,
+      logo: game.homeTeam.logo,
+    },
+    awayTeam: {
+      id: game.awayTeam.id,
+      name: game.awayTeam.name,
+      abbreviation: game.awayTeam.abbreviation,
+      logo: game.awayTeam.logo,
+    },
+    homeScore: game.homeScore,
+    awayScore: game.awayScore,
+    status: game.status,
+    date: game.date.toISOString(),
+    userPick: game.userPick.length > 0 ? {
+      id: game.userPick[0].id,
+      user: parseInt(userId),
+      team: {
+        id: game.userPick[0].team.id,
+        name: game.userPick[0].team.name,
+        abbreviation: game.userPick[0].team.abbreviation,
+        logo: game.userPick[0].team.logo,
+      },
+      result: game.userPick[0].result,
+      week: game.userPick[0].week,
+    } : undefined
+  })) as Game[]
+}
+
 // Helper functions for ID generation
 async function getNextGameId(): Promise<number> {
   const db = await getDatabase()
