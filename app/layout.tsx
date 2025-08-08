@@ -3,7 +3,7 @@ import "./globals.css"
 import { ThemeProvider } from "@/components/theme-provider"
 import Navbar from "@/components/navbar"
 import { Providers } from "./providers"
-import { Press_Start_2P, VT323 } from "next/font/google"
+import { Press_Start_2P, Source_Code_Pro } from "next/font/google"
 
 // Define the fonts
 const pressStart2P = Press_Start_2P({
@@ -13,10 +13,10 @@ const pressStart2P = Press_Start_2P({
   display: "swap",
 })
 
-const vt323 = VT323({
-  weight: ["400"],
+const sourceCodePro = Source_Code_Pro({
+  weight: ["400", "500", "600"],
   subsets: ["latin"],
-  variable: "--font-vt323",
+  variable: "--font-source-code-pro",
   display: "swap",
 })
 
@@ -33,7 +33,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`bg-[#f0e6d2] dark:bg-[#121212] min-h-screen ${pressStart2P.variable} ${vt323.variable}`}>
+      <body className={`bg-[#f0e6d2] dark:bg-[#121212] min-h-screen ${pressStart2P.variable} ${sourceCodePro.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           <Providers>
             <div className="min-h-screen">

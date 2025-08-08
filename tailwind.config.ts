@@ -20,7 +20,7 @@ const config = {
     },
     extend: {
       fontFamily: {
-        pixel: ["var(--font-vt323)", "monospace"],
+        pixel: ["var(--font-source-code-pro)", "monospace"],
         heading: ["var(--font-press-start-2p)", "cursive"],
       },
       colors: {
