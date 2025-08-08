@@ -4,6 +4,7 @@
 
 import { initializeDefaultData, createUser, createLeague, createLeagueMembership, createGame, createPick, getUserByEmail } from '../lib/db'
 import { getDatabase, Collections } from '../lib/mongodb'
+import { ObjectId } from 'mongodb'
 import type { User } from '../types/user'
 import type { League } from '../types/league'
 
@@ -46,7 +47,7 @@ async function getOrCreateLeague(name: string, description: string, sportsLeague
     if (existingLeague) {
       console.log(`✓ Using existing league: ${existingLeague.name}`)
       return {
-        id: existingLeague.id,
+        id: existingLeague._id.toString(),
         name: existingLeague.name,
         description: existingLeague.description,
         sportsLeague: existingLeague.sportsLeague,
@@ -66,13 +67,13 @@ async function getOrCreateLeague(name: string, description: string, sportsLeague
   return newLeague
 }
 
-async function getOrCreateMembership(leagueId: number, userId: string, teamName: string, isAdmin: boolean = false) {
+async function getOrCreateMembership(leagueId: string, userId: string, teamName: string, isAdmin: boolean = false) {
   const db = await getDatabase()
   
   try {
     const existingMembership = await db.collection(Collections.LEAGUE_MEMBERSHIPS).findOne({ 
-      leagueId, 
-      userId 
+      leagueId: new ObjectId(leagueId), 
+      userId: new ObjectId(userId) 
     })
     
     if (existingMembership) {
