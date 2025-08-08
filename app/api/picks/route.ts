@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createPick, getUserPicksByLeague } from '@/lib/db'
 import type { ApiResponse } from '@/lib/api-types'
+import { ObjectId } from 'mongodb'
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,6 +13,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'User ID and League ID parameters are required',
+      } as ApiResponse<never>, { status: 400 })
+    }
+    
+    // Validate that leagueId is a valid ObjectId format
+    if (!ObjectId.isValid(leagueId)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid league ID format',
       } as ApiResponse<never>, { status: 400 })
     }
     
@@ -39,6 +48,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'Missing required fields: userId, leagueId, gameId, teamId, week',
+      } as ApiResponse<never>, { status: 400 })
+    }
+    
+    // Validate that leagueId is a valid ObjectId format
+    if (!ObjectId.isValid(leagueId)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Invalid league ID format',
       } as ApiResponse<never>, { status: 400 })
     }
     
