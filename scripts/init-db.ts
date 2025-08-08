@@ -157,16 +157,12 @@ async function initializeDatabase() {
     
     // Demo user picks (some winning, some losing)
     await createPick(demoUser.id, demoLeague.id, 1, 1, 1) // Week 1: Arsenal (won 2-1)
-    await createPick(demoUser.id, demoLeague.id, 2, 4, 1) // Week 1: Brentford (won 3-1)
     await createPick(demoUser.id, demoLeague.id, 4, 7, 2) // Week 2: Crystal Palace (won 1-0)
-    await createPick(demoUser.id, demoLeague.id, 5, 10, 2) // Week 2: Liverpool (won 3-2)
     await createPick(demoUser.id, demoLeague.id, 7, 13, 3) // Week 3: Newcastle (upcoming)
     console.log('✓ Demo user picks created')
     
     // Second demo user picks (mixed results)
     await createPick(demoUserV.id, demoLeague.id, 1, 2, 1) // Week 1: Aston Villa (lost 1-2)
-    await createPick(demoUserV.id, demoLeague.id, 3, 6, 1) // Week 1: Chelsea (won 2-0)
-    await createPick(demoUserV.id, demoLeague.id, 4, 8, 2) // Week 2: Everton (lost 0-1)
     await createPick(demoUserV.id, demoLeague.id, 6, 11, 2) // Week 2: Man City (won 4-1)
     await createPick(demoUserV.id, demoLeague.id, 8, 15, 3) // Week 3: Southampton (upcoming)
     console.log('✓ Second demo user picks created')
