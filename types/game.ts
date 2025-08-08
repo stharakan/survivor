@@ -1,5 +1,8 @@
 import type { Team } from "./team"
 
+// Unified game status that works for both database storage and UI display
+export type GameStatus = "not_started" | "in_progress" | "completed"
+
 export type Game = {
   id: number
   week: number
@@ -7,8 +10,9 @@ export type Game = {
   awayTeam: Team
   homeScore: number | null
   awayScore: number | null
-  status: "scheduled" | "in_progress" | "completed"
+  status: GameStatus
   date: string
+  startTime?: string // ISO datetime string for precise game timing
   userPick?: {
     id: number
     user: number

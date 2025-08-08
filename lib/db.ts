@@ -3,7 +3,7 @@ import { getDatabase, Collections } from './mongodb'
 import type { User } from '@/types/user'
 import type { League, LeagueMembership, JoinRequest } from '@/types/league'
 import type { Team } from '@/types/team'
-import type { Game } from '@/types/game'
+import type { Game, GameStatus } from '@/types/game'
 import type { Pick } from '@/types/pick'
 import type { Player } from '@/types/player'
 import bcrypt from 'bcryptjs'
@@ -294,7 +294,7 @@ export async function createGame(
   date: Date,
   homeScore: number | null = null,
   awayScore: number | null = null,
-  status: "scheduled" | "in_progress" | "completed" = "scheduled"
+  status: "not_started" | "in_progress" | "completed" = "not_started"
 ): Promise<Game> {
   const db = await getDatabase()
   
@@ -442,16 +442,25 @@ export async function createPick(
     }
   }
   
-  const result2 = await db.collection(Collections.PICKS).insertOne({
-    id: pickId,
-    userId: new ObjectId(userId),
-    leagueId: new ObjectId(leagueId),
-    gameId,
-    teamId,
-    result,
-    week,
-    createdAt: new Date(),
-  })
+  // Use replaceOne with upsert to enforce one pick per user per week per league
+  const result2 = await db.collection(Collections.PICKS).replaceOne(
+    {
+      userId: new ObjectId(userId),
+      leagueId: new ObjectId(leagueId),
+      week: week
+    },
+    {
+      id: pickId,
+      userId: new ObjectId(userId),
+      leagueId: new ObjectId(leagueId),
+      gameId,
+      teamId,
+      result,
+      week,
+      createdAt: new Date(),
+    },
+    { upsert: true }
+  )
   
   return {
     id: pickId,
