@@ -664,7 +664,7 @@ export async function getGamesByWeekWithPicks(week: number, userId: string, leag
     date: game.date.toISOString(),
     userPick: game.userPick.length > 0 ? {
       id: game.userPick[0].id,
-      user: parseInt(userId),
+      user: game.userPick[0].userId.toString(),
       team: {
         id: game.userPick[0].team.id,
         name: game.userPick[0].team.name,

@@ -101,11 +101,29 @@ function MakePicksContent() {
       const game = games.find((g) => g.id === selectedGameId)
       const team = game?.homeTeam.id === selectedTeam ? game.homeTeam : game?.awayTeam
 
-      await makePick(user.id, selectedGameId, selectedTeam, currentLeague.id, currentWeek)
+      const newPick = await makePick(user.id, selectedGameId, selectedTeam, currentLeague.id, currentWeek)
       setSuccess(`Successfully picked ${team?.name} for Week ${currentWeek}`)
 
       // Update the user's pick for this week
       setUserPickForWeek(selectedTeam)
+
+      // Update the games array to include the new userPick
+      setGames(prevGames => 
+        prevGames.map(game => 
+          game.id === selectedGameId 
+            ? {
+                ...game,
+                userPick: {
+                  id: newPick.id,
+                  user: user.id,
+                  team: newPick.team,
+                  result: newPick.result,
+                  week: newPick.week,
+                }
+              }
+            : game
+        )
+      )
 
       // Refresh picks remaining
       const remainingData = await getPicksRemaining(user.id, currentLeague.id)
@@ -120,7 +138,6 @@ function MakePicksContent() {
 
   // Get the name of the team the user picked for current week
   const getUserPickedTeamName = () => {
-    console.log( "userPickForWeek")
     if (!userPickForWeek) return null
     
     const gameWithPick = games.find(game => 
@@ -129,8 +146,6 @@ function MakePicksContent() {
       game.userPick.team.id === userPickForWeek
     )
     
-    console.log( "games.userPick.user")
-    console.log( "games.userPick.team.id")
     return gameWithPick?.userPick.team.name || null
   }
 
