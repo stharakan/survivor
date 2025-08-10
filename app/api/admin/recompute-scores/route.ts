@@ -1,7 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { runScoringCalculation } from '@/lib/scoring'
-import { createApiResponse, handleApiError } from '@/lib/api-types'
+import { createApiResponse, handleApiError, ApiError } from '@/lib/api-types'
 import type { ScoringResult } from '@/lib/scoring'
+
+/**
+ * Validates the API key from the request headers
+ */
+function validateApiKey(request: NextRequest): boolean {
+  const apiKey = request.headers.get('X-API-Key')
+  const expectedApiKey = process.env.SCORING_API_KEY
+  
+  if (!expectedApiKey) {
+    console.warn('SCORING_API_KEY environment variable not set')
+    return false
+  }
+  
+  if (!apiKey) {
+    return false
+  }
+  
+  return apiKey === expectedApiKey
+}
 
 /**
  * POST /api/admin/recompute-scores
@@ -12,9 +31,20 @@ import type { ScoringResult } from '@/lib/scoring'
  * 
  * This endpoint replicates the functionality of the scripts/calculate-scores.js script
  * but provides it as an HTTP API for remote triggering.
+ * 
+ * Requires API key authentication via X-API-Key header.
  */
 export async function POST(request: NextRequest) {
   try {
+    // Validate API key authentication
+    if (!validateApiKey(request)) {
+      console.log('=== API Scoring Calculation Request - Authentication Failed ===')
+      return NextResponse.json(
+        createApiResponse(false, undefined, 'Invalid or missing API key'),
+        { status: 401 }
+      )
+    }
+    
     console.log('=== API Scoring Calculation Request Started ===')
     
     // Run the complete scoring calculation
