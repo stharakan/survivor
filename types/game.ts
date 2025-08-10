@@ -14,7 +14,7 @@ export type Game = {
   date: string
   startTime?: string // ISO datetime string for precise game timing
   userPick?: {
-    id: number
+    id: string
     user: number
     team: Team
     result: "win" | "loss" | "draw" | null

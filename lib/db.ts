@@ -430,8 +430,6 @@ export async function createPick(
     throw new Error('Game or team not found')
   }
   
-  const pickId = await getNextPickId()
-  
   // Determine result if game is completed
   let result: "win" | "loss" | null = null
   if (game[0].status === "completed" && game[0].homeScore !== null && game[0].awayScore !== null) {
@@ -450,7 +448,6 @@ export async function createPick(
       week: week
     },
     {
-      id: pickId,
       userId: new ObjectId(userId),
       leagueId: new ObjectId(leagueId),
       gameId,
@@ -461,6 +458,14 @@ export async function createPick(
     },
     { upsert: true }
   )
+  
+  // Get the upserted or updated document's _id
+  const pickId = result2.upsertedId ? result2.upsertedId.toString() : 
+    (await db.collection(Collections.PICKS).findOne({
+      userId: new ObjectId(userId),
+      leagueId: new ObjectId(leagueId),
+      week: week
+    }))!._id.toString()
   
   return {
     id: pickId,
@@ -541,7 +546,7 @@ export async function getUserPicksByLeague(userId: string, leagueId: string): Pr
     ]).toArray()
   
   return picks.map(pick => ({
-    id: pick.id,
+    id: pick._id.toString(),
     user: parseInt(pick.userId.toString()),
     game: {
       id: pick.game.id,
@@ -663,7 +668,7 @@ export async function getGamesByWeekWithPicks(week: number, userId: string, leag
     status: game.status,
     date: game.date.toISOString(),
     userPick: game.userPick.length > 0 ? {
-      id: game.userPick[0].id,
+      id: game.userPick[0]._id.toString(),
       user: game.userPick[0].userId.toString(),
       team: {
         id: game.userPick[0].team.id,
@@ -684,11 +689,6 @@ async function getNextGameId(): Promise<number> {
   return lastGame ? lastGame.id + 1 : 1
 }
 
-async function getNextPickId(): Promise<number> {
-  const db = await getDatabase()
-  const lastPick = await db.collection(Collections.PICKS).findOne({}, { sort: { id: -1 } })
-  return lastPick ? lastPick.id + 1 : 1
-}
 
 // Initialize default data (teams, etc.)
 export async function initializeDefaultData() {

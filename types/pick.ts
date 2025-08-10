@@ -2,7 +2,7 @@ import type { Game } from "./game"
 import type { Team } from "./team"
 
 export type Pick = {
-  id: number
+  id: string
   user: number
   game: Game
   team: Team
