@@ -50,12 +50,21 @@ export const updateMemberSchema = z.object({
   isAdmin: z.boolean().optional(),
 })
 
+// Scoring calculation response schema
+export const scoringResultSchema = z.object({
+  picksUpdated: z.number().int().min(0),
+  membershipsUpdated: z.number().int().min(0),
+  executionTime: z.number().min(0),
+  completedAt: z.string(),
+})
+
 // Request type inference
 export type LoginRequest = z.infer<typeof loginSchema>
 export type CreateLeagueRequest = z.infer<typeof createLeagueSchema>
 export type JoinLeagueRequest = z.infer<typeof joinLeagueSchema>
 export type MakePickRequest = z.infer<typeof makePickSchema>
 export type UpdateMemberRequest = z.infer<typeof updateMemberSchema>
+export type ScoringResultResponse = z.infer<typeof scoringResultSchema>
 
 // Helper function to create API responses
 export function createApiResponse<T>(
