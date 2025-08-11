@@ -13,6 +13,8 @@ export type Game = {
   status: GameStatus
   date: string
   startTime?: string // ISO datetime string for precise game timing
+  sportsLeague: string // e.g., "EPL", "NFL", "NBA"
+  season: string // e.g., "2024/2025", "2025/2026"
   userPick?: {
     id: string
     user: number

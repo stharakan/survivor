@@ -148,6 +148,8 @@ async function initializeDatabase() {
         game.homeTeam,
         game.awayTeam,
         gameDate,
+        'EPL',
+        '2024/2025',
         game.homeScore,
         game.awayScore,
         game.status as "completed"
@@ -171,6 +173,8 @@ async function initializeDatabase() {
         game.homeTeam,
         game.awayTeam,
         gameDate,
+        'EPL',
+        '2024/2025',
         game.homeScore,
         game.awayScore,
         game.status as "completed"
@@ -194,9 +198,11 @@ async function initializeDatabase() {
         game.homeTeam,
         game.awayTeam,
         gameDate,
+        'EPL',
+        '2024/2025',
         null,
         null,
-game.status as "not_started"
+        game.status as "not_started"
       )
     }
     console.log('✓ Week 3 games created (upcoming)')
@@ -217,9 +223,11 @@ game.status as "not_started"
         game.homeTeam,
         game.awayTeam,
         gameDate,
+        'EPL',
+        '2024/2025',
         null,
         null,
-game.status as "not_started"
+        game.status as "not_started"
       )
     }
     console.log('✓ Week 4 games created (upcoming)')

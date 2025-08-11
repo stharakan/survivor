@@ -9,20 +9,20 @@ export async function GET(request: NextRequest) {
     const userId = searchParams.get('user_id')
     const leagueId = searchParams.get('league_id')
     
-    if (!week) {
+    if (!week || !leagueId) {
       return NextResponse.json({
         success: false,
-        error: 'Week parameter is required',
+        error: 'Week and league_id parameters are required',
       } as ApiResponse<never>, { status: 400 })
     }
     
     let games
-    if (userId && leagueId) {
+    if (userId) {
       // Get games with user picks included
       games = await getGamesByWeekWithPicks(parseInt(week), userId, leagueId)
     } else {
       // Get games without picks
-      games = await getGamesByWeek(parseInt(week))
+      games = await getGamesByWeek(parseInt(week), leagueId)
     }
     
     return NextResponse.json({

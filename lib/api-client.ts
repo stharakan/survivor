@@ -178,10 +178,7 @@ export async function getPicksRemaining(
 }
 
 export async function getUpcomingGames(week: number, leagueId: number): Promise<Game[]> {
-  // We need user context to include picks, but it's not in the function signature
-  // We'll need to get the current user from the auth context in the component instead
-  // For now, return games without user picks - the component will need to be updated
-  return apiRequest(`/games?week=${week}`)
+  return apiRequest(`/games?week=${week}&league_id=${leagueId}`)
 }
 
 export async function getUpcomingGamesWithPicks(week: number, leagueId: number, userId: string): Promise<Game[]> {
@@ -196,7 +193,7 @@ export async function makePick(userId: string, gameId: number, teamId: number, l
     // Find the game to get its week - this is expensive but necessary
     for (let w = 1; w <= 38; w++) {
       try {
-        const weekGames = await apiRequest<Game[]>(`/games?week=${w}`)
+        const weekGames = await apiRequest<Game[]>(`/games?week=${w}&league_id=${leagueId}`)
         const game = weekGames.find(g => g.id === gameId)
         if (game) {
           gameWeek = w

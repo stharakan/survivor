@@ -371,6 +371,8 @@ export async function createGame(
   homeTeamId: number,
   awayTeamId: number,
   date: Date,
+  sportsLeague: string,
+  season: string,
   homeScore: number | null = null,
   awayScore: number | null = null,
   status: "not_started" | "in_progress" | "completed" = "not_started"
@@ -396,6 +398,8 @@ export async function createGame(
     awayScore,
     status,
     date,
+    sportsLeague,
+    season,
     createdAt: new Date(),
   })
   
@@ -418,15 +422,21 @@ export async function createGame(
     awayScore,
     status,
     date: date.toISOString(),
+    sportsLeague,
+    season,
   } as Game
 }
 
-export async function getGamesByWeek(week: number): Promise<Game[]> {
+export async function getGamesByWeek(week: number, leagueId: string): Promise<Game[]> {
   const db = await getDatabase()
+  
+  // Get league details first
+  const league = await getLeagueById(leagueId)
+  if (!league) throw new Error('League not found')
   
   const games = await db.collection(Collections.GAMES)
     .aggregate([
-      { $match: { week } },
+      { $match: { week, sportsLeague: league.sportsLeague, season: league.season } },
       {
         $lookup: {
           from: Collections.TEAMS,
@@ -466,6 +476,8 @@ export async function getGamesByWeek(week: number): Promise<Game[]> {
     awayScore: game.awayScore,
     status: game.status,
     date: game.date.toISOString(),
+    sportsLeague: game.sportsLeague,
+    season: game.season,
   })) as Game[]
 }
 
@@ -675,9 +687,13 @@ export async function getAllTeams(): Promise<Team[]> {
 export async function getGamesByWeekWithPicks(week: number, userId: string, leagueId: string): Promise<Game[]> {
   const db = await getDatabase()
   
+  // Get league details first
+  const league = await getLeagueById(leagueId)
+  if (!league) throw new Error('League not found')
+  
   const games = await db.collection(Collections.GAMES)
     .aggregate([
-      { $match: { week } },
+      { $match: { week, sportsLeague: league.sportsLeague, season: league.season } },
       {
         $lookup: {
           from: Collections.TEAMS,
@@ -746,6 +762,8 @@ export async function getGamesByWeekWithPicks(week: number, userId: string, leag
     awayScore: game.awayScore,
     status: game.status,
     date: game.date.toISOString(),
+    sportsLeague: game.sportsLeague,
+    season: game.season,
     userPick: game.userPick.length > 0 ? {
       id: game.userPick[0]._id.toString(),
       user: game.userPick[0].userId.toString(),
@@ -769,9 +787,31 @@ async function getNextGameId(): Promise<number> {
 }
 
 
+// Create database indexes for efficient querying
+export async function createGameIndexes() {
+  const db = await getDatabase()
+  
+  // Compound index for filtering games by sports league, season, and week
+  await db.collection(Collections.GAMES).createIndex(
+    { sportsLeague: 1, season: 1, week: 1 },
+    { name: 'games_league_season_week' }
+  )
+  
+  // Index for general sports league and season queries
+  await db.collection(Collections.GAMES).createIndex(
+    { sportsLeague: 1, season: 1 },
+    { name: 'games_league_season' }
+  )
+  
+  console.log('✓ Game indexes created')
+}
+
 // Initialize default data (teams, etc.)
 export async function initializeDefaultData() {
   const db = await getDatabase()
+  
+  // Create indexes first
+  await createGameIndexes()
   
   // Check if teams already exist
   const teamCount = await db.collection(Collections.TEAMS).countDocuments()
