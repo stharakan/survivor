@@ -41,6 +41,18 @@ export async function loginUser(email: string, password: string): Promise<{ user
   })
 }
 
+export async function registerUser(
+  email: string, 
+  username: string, 
+  password: string, 
+  confirmPassword: string
+): Promise<{ user: User; token: string }> {
+  return apiRequest('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({ email, username, password, confirmPassword }),
+  })
+}
+
 export async function logoutUser(): Promise<void> {
   return apiRequest('/auth/logout', {
     method: 'POST',

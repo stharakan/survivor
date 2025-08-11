@@ -13,20 +13,28 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
 import Link from "next/link"
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const [email, setEmail] = useState("")
+  const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
-  const { login, loading } = useAuth()
+  const { register, loading } = useAuth()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
 
+    // Client-side validation
+    if (password !== confirmPassword) {
+      setError("Passwords don't match")
+      return
+    }
+
     try {
-      await login(email, password)
+      await register(email, username, password, confirmPassword)
     } catch (err) {
-      setError("Invalid email or password. Please try again.")
+      setError(err instanceof Error ? err.message : "Registration failed. Please try again.")
     }
   }
 
@@ -48,8 +56,8 @@ export default function LoginPage() {
 
       <Card className="w-full max-w-md border-4 border-black shadow-pixel-lg">
         <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
-          <CardTitle className="text-xl">Login</CardTitle>
-          <CardDescription className="text-white/80">Enter your credentials to access your account</CardDescription>
+          <CardTitle className="text-xl">Create Account</CardTitle>
+          <CardDescription className="text-white/80">Join the league and start picking teams</CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -76,13 +84,28 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-2">
+              <Label htmlFor="username" className="font-heading text-sm">
+                Username
+              </Label>
+              <Input
+                id="username"
+                type="text"
+                placeholder="Choose a username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                className="border-2 border-black"
+              />
+            </div>
+
+            <div className="space-y-2">
               <Label htmlFor="password" className="font-heading text-sm">
                 Password
               </Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Enter your password"
+                placeholder="Create a password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -90,16 +113,31 @@ export default function LoginPage() {
               />
             </div>
 
+            <div className="space-y-2">
+              <Label htmlFor="confirmPassword" className="font-heading text-sm">
+                Confirm Password
+              </Label>
+              <Input
+                id="confirmPassword"
+                type="password"
+                placeholder="Confirm your password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                required
+                className="border-2 border-black"
+              />
+            </div>
+
             <Button type="submit" variant="pixel" className="w-full" disabled={loading}>
-              {loading ? "Logging in..." : "Login"}
+              {loading ? "Creating Account..." : "Create Account"}
             </Button>
           </form>
         </CardContent>
         <CardFooter className="flex justify-center border-t-2 border-black pt-4">
           <p className="text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <Link href="/register" className="text-retro-orange hover:underline font-heading">
-              Sign up
+            Already have an account?{" "}
+            <Link href="/login" className="text-retro-orange hover:underline font-heading">
+              Sign in
             </Link>
           </p>
         </CardFooter>

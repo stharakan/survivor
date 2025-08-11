@@ -44,12 +44,12 @@ export default function Home() {
         <Card>
           <CardHeader>
             <CardTitle className="text-xl">New to Survivor League?</CardTitle>
-            <CardDescription>Learn how the game works and get started</CardDescription>
+            <CardDescription>Create an account and join the competition</CardDescription>
           </CardHeader>
           <CardContent>
-            <Link href="/about">
-              <Button variant="outline" className="w-full">
-                Learn More
+            <Link href="/register">
+              <Button variant="pixel" className="w-full">
+                Create Account
               </Button>
             </Link>
           </CardContent>

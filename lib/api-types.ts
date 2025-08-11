@@ -26,6 +26,16 @@ export const loginSchema = z.object({
   password: z.string().min(6, 'Password must be at least 6 characters'),
 })
 
+export const registerSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  username: z.string().min(2, 'Username must be at least 2 characters'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string().min(6, 'Please confirm your password'),
+}).refine((data) => data.password === data.confirmPassword, {
+  message: "Passwords don't match",
+  path: ["confirmPassword"],
+})
+
 export const createLeagueSchema = z.object({
   name: z.string().min(1, 'League name is required'),
   description: z.string().min(1, 'Description is required'),
@@ -60,6 +70,7 @@ export const scoringResultSchema = z.object({
 
 // Request type inference
 export type LoginRequest = z.infer<typeof loginSchema>
+export type RegisterRequest = z.infer<typeof registerSchema>
 export type CreateLeagueRequest = z.infer<typeof createLeagueSchema>
 export type JoinLeagueRequest = z.infer<typeof joinLeagueSchema>
 export type MakePickRequest = z.infer<typeof makePickSchema>

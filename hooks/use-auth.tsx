@@ -4,13 +4,14 @@ import type React from "react"
 
 import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { loginUser, logoutUser, verifyUser } from "@/lib/api-client"
+import { loginUser, registerUser, logoutUser, verifyUser } from "@/lib/api-client"
 import type { User } from "@/types/user"
 
 // Define auth context type
 type AuthContextType = {
   user: User | null
   login: (email: string, password: string) => Promise<void>
+  register: (email: string, username: string, password: string, confirmPassword: string) => Promise<void>
   logout: () => void
   loading: boolean
 }
@@ -59,6 +60,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  // Register function
+  const register = async (email: string, username: string, password: string, confirmPassword: string) => {
+    setLoading(true)
+    try {
+      // Call the register API
+      const { user } = await registerUser(email, username, password, confirmPassword)
+      setUser(user)
+      router.push("/leagues")
+    } catch (error) {
+      console.error("Registration error:", error)
+      throw error
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Logout function
   const logout = async () => {
     try {
@@ -73,7 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     router.push("/")
   }
 
-  return <AuthContext.Provider value={{ user, login, logout, loading }}>{children}</AuthContext.Provider>
+  return <AuthContext.Provider value={{ user, login, register, logout, loading }}>{children}</AuthContext.Provider>
 }
 
 // Custom hook to use auth context
