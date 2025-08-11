@@ -286,6 +286,85 @@ export async function getLeagueMembers(leagueId: string): Promise<LeagueMembersh
   })) as LeagueMembership[]
 }
 
+export async function getLeagueMember(leagueId: string, memberId: string): Promise<LeagueMembership | null> {
+  const db = await getDatabase()
+  
+  const memberships = await db.collection(Collections.LEAGUE_MEMBERSHIPS)
+    .aggregate([
+      { 
+        $match: { 
+          _id: new ObjectId(memberId),
+          leagueId: new ObjectId(leagueId)
+        } 
+      },
+      {
+        $lookup: {
+          from: Collections.LEAGUES,
+          localField: 'leagueId',
+          foreignField: '_id',
+          as: 'league'
+        }
+      },
+      { $unwind: '$league' }
+    ]).toArray()
+  
+  if (memberships.length === 0) {
+    return null
+  }
+  
+  const membership = memberships[0]
+  return {
+    id: membership._id.toString(),
+    league: {
+      id: membership.league._id.toString(),
+      name: membership.league.name,
+      description: membership.league.description,
+      sportsLeague: membership.league.sportsLeague,
+      season: membership.league.season,
+      isPublic: membership.league.isPublic,
+      requiresApproval: membership.league.requiresApproval,
+      createdBy: membership.league.createdBy.toString(),
+      isActive: membership.league.isActive,
+      memberCount: membership.league.memberCount,
+      createdAt: membership.league.createdAt.toISOString(),
+    },
+    user: membership.userId.toString(),
+    teamName: membership.teamName,
+    points: membership.points,
+    strikes: membership.strikes,
+    rank: membership.rank,
+    isActive: membership.isActive,
+    isAdmin: membership.isAdmin,
+    isPaid: membership.isPaid,
+    status: membership.status,
+    joinedAt: membership.joinedAt.toISOString(),
+  } as LeagueMembership
+}
+
+export async function updateMemberStatus(
+  leagueId: string,
+  memberId: string,
+  updates: { isPaid?: boolean; isAdmin?: boolean }
+): Promise<void> {
+  const db = await getDatabase()
+  
+  const updateDoc: any = {}
+  if (typeof updates.isPaid === 'boolean') {
+    updateDoc.isPaid = updates.isPaid
+  }
+  if (typeof updates.isAdmin === 'boolean') {
+    updateDoc.isAdmin = updates.isAdmin
+  }
+  
+  await db.collection(Collections.LEAGUE_MEMBERSHIPS).updateOne(
+    {
+      _id: new ObjectId(memberId),
+      leagueId: new ObjectId(leagueId)
+    },
+    { $set: updateDoc }
+  )
+}
+
 // Game operations
 export async function createGame(
   week: number,

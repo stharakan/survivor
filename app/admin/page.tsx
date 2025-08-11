@@ -3,12 +3,13 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getLeagueMembers, getJoinRequests } from "@/lib/api"
+import { getLeagueMembers, getJoinRequests, updateMemberStatus } from "@/lib/api"
 import type { LeagueMembership, JoinRequest } from "@/types/league"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Users, Settings, UserCheck, Clock } from "lucide-react"
 import Image from "next/image"
@@ -21,27 +22,60 @@ function AdminPortalContent() {
   const [members, setMembers] = useState<LeagueMembership[]>([])
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
   const [loading, setLoading] = useState(true)
+  const [updatingMembers, setUpdatingMembers] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const fetchData = async () => {
       if (user && currentLeague) {
+        // Fetch members - this should work
         try {
-          const [membersData, requestsData] = await Promise.all([
-            getLeagueMembers(currentLeague.id),
-            getJoinRequests(currentLeague.id),
-          ])
+          const membersData = await getLeagueMembers(currentLeague.id)
           setMembers(membersData)
+        } catch (error) {
+          console.error("Error fetching members:", error)
+        }
+        
+        // Fetch join requests - this is not implemented yet
+        try {
+          const requestsData = await getJoinRequests(currentLeague.id)
           setJoinRequests(requestsData)
         } catch (error) {
-          console.error("Error fetching admin data:", error)
-        } finally {
-          setLoading(false)
+          console.error("Error fetching join requests (expected - not implemented):", error)
         }
+        
+        setLoading(false)
       }
     }
 
     fetchData()
   }, [user, currentLeague])
+
+  const handleTogglePayment = async (member: LeagueMembership) => {
+    if (!currentLeague) return
+    
+    const memberId = member.id.toString()
+    setUpdatingMembers(prev => new Set(prev).add(memberId))
+    
+    try {
+      const updatedMember = await updateMemberStatus(currentLeague.id, memberId, { 
+        isPaid: !member.isPaid 
+      })
+      
+      // Update the member in the list
+      setMembers(prev => 
+        prev.map(m => m.id === member.id ? { ...m, isPaid: updatedMember.isPaid } : m)
+      )
+    } catch (error) {
+      console.error("Error updating payment status:", error)
+      // Could add toast notification here
+    } finally {
+      setUpdatingMembers(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(memberId)
+        return newSet
+      })
+    }
+  }
 
   if (loading) {
     return (
@@ -143,35 +177,46 @@ function AdminPortalContent() {
               <CardDescription className="text-white/80">Manage your league members</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="space-y-0 divide-y-2 divide-black">
-                {activeMembers.map((member) => (
-                  <div key={member.id} className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div>
-                        <div className="font-bold">{member.teamName}</div>
-                        <div className="text-sm text-muted-foreground">
-                          Rank #{member.rank} • {member.points} points • {member.strikes} strikes
+              {activeMembers.length > 0 ? (
+                <div className="space-y-0 divide-y-2 divide-black">
+                  {activeMembers.map((member) => (
+                    <div key={member.id} className="p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div>
+                          <div className="font-bold">{member.teamName}</div>
+                          <div className="text-sm text-muted-foreground">
+                            Rank #{member.rank} • {member.points} points • {member.strikes} strikes
+                          </div>
                         </div>
                       </div>
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">Payment:</span>
+                          <Switch
+                            checked={member.isPaid}
+                            onCheckedChange={() => handleTogglePayment(member)}
+                            disabled={updatingMembers.has(member.id.toString())}
+                          />
+                        </div>
+                        {member.isAdmin && (
+                          <Badge variant="outline" className="bg-yellow-500 text-black border-2 border-black">
+                            ADMIN
+                          </Badge>
+                        )}
+                        <Link href={`/admin/members/${member.id}`}>
+                          <Button variant="outline" size="sm" className="border-2 border-black bg-transparent">
+                            Manage
+                          </Button>
+                        </Link>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <Badge variant={member.isPaid ? "success" : "destructive"} className="border-2 border-black">
-                        {member.isPaid ? "PAID" : "UNPAID"}
-                      </Badge>
-                      {member.isAdmin && (
-                        <Badge variant="outline" className="bg-yellow-500 text-black border-2 border-black">
-                          ADMIN
-                        </Badge>
-                      )}
-                      <Link href={`/admin/members/${member.id}`}>
-                        <Button variant="outline" size="sm" className="border-2 border-black bg-transparent">
-                          Manage
-                        </Button>
-                      </Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-muted-foreground">No league members found.</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

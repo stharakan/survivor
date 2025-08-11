@@ -122,15 +122,18 @@ export async function requestToJoinLeague(
 }
 
 export async function getLeagueMember(leagueId: number, memberId: number): Promise<LeagueMembership | null> {
-  throw new Error('getLeagueMember not implemented yet')
+  return apiRequest(`/leagues/${leagueId}/members/${memberId}`)
 }
 
 export async function updateMemberStatus(
   leagueId: number,
-  memberId: number,
+  memberId: string,
   updates: { isPaid?: boolean; isAdmin?: boolean },
-): Promise<void> {
-  throw new Error('updateMemberStatus not implemented yet')
+): Promise<LeagueMembership> {
+  return apiRequest(`/leagues/${leagueId}/members/${memberId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  })
 }
 
 export async function removeMemberFromLeague(leagueId: number, memberId: number): Promise<void> {
