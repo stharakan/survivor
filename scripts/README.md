@@ -13,6 +13,9 @@ Import script for populating the database with EPL 2025/2026 season fixtures fro
 ### 3. Database Initialization (`init-db.ts`)
 Script for initializing the database with sample data for testing purposes.
 
+### 4. EPL League Creation (`create-epl-league.ts`)
+Script for creating an EPL 2025/2026 survivor league with designated admin user.
+
 ## Features
 
 - ✅ Calls scoring calculation API endpoint remotely
@@ -434,3 +437,52 @@ If you were using the old MongoDB-direct script:
    - Centralized logic in API endpoint
    - Better security with API key authentication
    - Easier to monitor and debug via HTTP logs
+
+---
+
+# EPL League Creation Script
+
+Script for creating an EPL 2025/2026 survivor league with a designated admin user.
+
+## Features
+
+- ✅ Finds existing user by email address
+- ✅ Creates EPL 2025/2026 survivor league 
+- ✅ Assigns user as league administrator
+- ✅ Idempotent - safe to run multiple times
+- ✅ Comprehensive error handling and logging
+
+## Quick Start
+
+### 1. Set Environment Variables
+
+```bash
+export MONGODB_URI="mongodb://localhost:27017"
+export MONGODB_DB_NAME="survivor-league"  # Optional
+```
+
+### 2. Run the Script
+
+```bash
+npx tsx --env-file=.env.local scripts/create-epl-league.ts
+```
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `MONGODB_URI` | **Yes** | None | MongoDB connection string |
+| `MONGODB_DB_NAME` | No | `survivor-league` | MongoDB database name |
+
+## Script Behavior
+
+The script will:
+1. Find existing user with email `sameer.tharakan@gmail.com`
+2. Create EPL 2025/2026 league (if it doesn't exist)
+3. Assign user as league administrator
+
+## Dependencies
+
+- **Node.js**: >=18.0.0
+- **TypeScript**: For script execution (npx tsx)
+- **MongoDB**: Database connection
