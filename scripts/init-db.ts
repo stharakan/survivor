@@ -119,7 +119,7 @@ async function initializeDatabase() {
       'Demo League',
       'A demo survivor league',
       'EPL',
-      '2025-26',
+      '2024/2025',
       true,
       false,
       demoUser.id
