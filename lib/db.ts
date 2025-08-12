@@ -151,6 +151,56 @@ export async function getAllLeagues(): Promise<League[]> {
   })) as League[]
 }
 
+export async function getAvailableLeagues(userId: string): Promise<League[]> {
+  const db = await getDatabase()
+  
+  // Get user's league memberships to find private leagues they can access
+  const memberships = await db.collection(Collections.LEAGUE_MEMBERSHIPS)
+    .find({ userId: new ObjectId(userId) }).toArray()
+  
+  const memberLeagueIds = memberships.map(m => m.leagueId)
+  
+  // Get leagues that are either public OR user is a member of
+  const leagues = await db.collection(Collections.LEAGUES).aggregate([
+    {
+      $match: {
+        isActive: true,
+        $or: [
+          { isPublic: true },
+          { _id: { $in: memberLeagueIds } }
+        ]
+      }
+    },
+    {
+      $lookup: {
+        from: Collections.LEAGUE_MEMBERSHIPS,
+        localField: '_id',
+        foreignField: 'leagueId',
+        as: 'memberships'
+      }
+    },
+    {
+      $addFields: {
+        memberCount: { $size: '$memberships' }
+      }
+    }
+  ]).toArray()
+  
+  return leagues.map(league => ({
+    id: league._id.toString(),
+    name: league.name,
+    description: league.description,
+    sportsLeague: league.sportsLeague,
+    season: league.season,
+    isPublic: league.isPublic,
+    requiresApproval: league.requiresApproval,
+    createdBy: league.createdBy.toString(),
+    isActive: league.isActive,
+    memberCount: league.memberCount,
+    createdAt: league.createdAt.toISOString(),
+  })) as League[]
+}
+
 // League membership operations
 export async function createLeagueMembership(
   leagueId: string,

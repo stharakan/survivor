@@ -115,13 +115,14 @@ async function initializeDatabase() {
     )
     
     // Get or create demo league (won't duplicate)
+    // Note: Demo league is private for accurate record keeping
     const demoLeague = await getOrCreateLeague(
       'Demo League',
       'A demo survivor league',
       'EPL',
       '2024/2025',
-      true,
-      false,
+      false, // isPublic: false (private league)
+      true,  // requiresApproval: true
       demoUser.id
     )
     

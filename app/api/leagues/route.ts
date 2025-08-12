@@ -1,12 +1,34 @@
 import { NextRequest } from 'next/server'
-import { getAllLeagues, createLeague, getUserById } from '@/lib/db'
+import { getAllLeagues, getAvailableLeagues, createLeague, getUserById } from '@/lib/db'
 import { createLeagueSchema, createApiResponse, handleApiError } from '@/lib/api-types'
 import jwt from 'jsonwebtoken'
 
-// GET /api/leagues - Get all leagues
-export async function GET() {
+// GET /api/leagues - Get available leagues for authenticated user
+export async function GET(request: NextRequest) {
   try {
-    const leagues = await getAllLeagues()
+    // Verify authentication
+    const token = request.cookies.get('auth-token')?.value
+    if (!token) {
+      return Response.json(
+        createApiResponse(false, undefined, 'Authentication required'),
+        { status: 401 }
+      )
+    }
+    
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret') as {
+      userId: string
+    }
+    
+    const user = await getUserById(decoded.userId)
+    if (!user) {
+      return Response.json(
+        createApiResponse(false, undefined, 'User not found'),
+        { status: 404 }
+      )
+    }
+    
+    // Get leagues available to this user (public + member leagues)
+    const leagues = await getAvailableLeagues(user.id)
     return Response.json(createApiResponse(true, leagues))
   } catch (error) {
     return handleApiError(error)

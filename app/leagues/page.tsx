@@ -35,6 +35,10 @@ export default function LeagueSelectionPage() {
         setAllLeagues(leagues)
       } catch (error) {
         console.error("Error fetching leagues:", error)
+        // If authentication error, redirect to login
+        if (error instanceof Error && error.message.includes('Authentication required')) {
+          redirect("/login")
+        }
       } finally {
         setLoadingLeagues(false)
       }
