@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, Suspense } from "react"
 import { useAuth } from "@/hooks/use-auth"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,13 +14,16 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
 import Link from "next/link"
 
-export default function RegisterPage() {
+function RegisterContent() {
   const [email, setEmail] = useState("")
   const [username, setUsername] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
   const { register, loading } = useAuth()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const redirect = searchParams.get('redirect')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -33,6 +37,10 @@ export default function RegisterPage() {
 
     try {
       await register(email, username, password, confirmPassword)
+      // Redirect to the specified URL after successful registration
+      if (redirect) {
+        router.push(redirect)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed. Please try again.")
     }
@@ -136,12 +144,28 @@ export default function RegisterPage() {
         <CardFooter className="flex justify-center border-t-2 border-black pt-4">
           <p className="text-sm text-muted-foreground">
             Already have an account?{" "}
-            <Link href="/login" className="text-retro-orange hover:underline font-heading">
+            <Link 
+              href={redirect ? `/login?redirect=${encodeURIComponent(redirect)}` : "/login"} 
+              className="text-retro-orange hover:underline font-heading"
+            >
               Sign in
             </Link>
           </p>
         </CardFooter>
       </Card>
     </div>
+  )
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-retro-orange"></div>
+        <p className="font-pixel text-lg">Loading...</p>
+      </div>
+    }>
+      <RegisterContent />
+    </Suspense>
   )
 }

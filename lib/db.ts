@@ -6,7 +6,9 @@ import type { Team } from '@/types/team'
 import type { Game, GameStatus } from '@/types/game'
 import type { Pick } from '@/types/pick'
 import type { Player } from '@/types/player'
+import type { LeagueInvitation, InvitationWithLeague, InvitationAcceptanceInfo } from '@/types/invitation'
 import bcrypt from 'bcryptjs'
+import crypto from 'crypto'
 
 // User operations
 export async function createUser(email: string, username: string, password: string): Promise<User> {
@@ -812,6 +814,7 @@ export async function initializeDefaultData() {
   
   // Create indexes first
   await createGameIndexes()
+  await createInvitationIndexes()
   
   // Check if teams already exist
   const teamCount = await db.collection(Collections.TEAMS).countDocuments()
@@ -846,4 +849,240 @@ export async function initializeDefaultData() {
     id: index + 1,
     sportsLeague: 'EPL'
   })))
+}
+
+// League invitation operations
+export async function createLeagueInvitation(
+  leagueId: string,
+  createdBy: string,
+  maxUses: number | null,
+  expiresAt: Date | null
+): Promise<LeagueInvitation> {
+  const db = await getDatabase()
+  const token = crypto.randomBytes(32).toString('hex')
+  
+  const result = await db.collection(Collections.LEAGUE_INVITATIONS).insertOne({
+    leagueId: new ObjectId(leagueId),
+    token,
+    createdBy: new ObjectId(createdBy),
+    maxUses,
+    currentUses: 0,
+    expiresAt,
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  })
+  
+  return {
+    id: result.insertedId.toString(),
+    leagueId,
+    token,
+    createdBy,
+    maxUses,
+    currentUses: 0,
+    expiresAt: expiresAt?.toISOString() || null,
+    isActive: true,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+export async function getLeagueInvitations(leagueId: string): Promise<InvitationWithLeague[]> {
+  const db = await getDatabase()
+  
+  const invitations = await db.collection(Collections.LEAGUE_INVITATIONS)
+    .aggregate([
+      { $match: { leagueId: new ObjectId(leagueId) } },
+      {
+        $lookup: {
+          from: Collections.LEAGUES,
+          localField: 'leagueId',
+          foreignField: '_id',
+          as: 'league'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.USERS,
+          localField: 'createdBy',
+          foreignField: '_id',
+          as: 'creator'
+        }
+      },
+      { $unwind: '$league' },
+      { $unwind: '$creator' },
+      { $sort: { createdAt: -1 } }
+    ]).toArray()
+  
+  return invitations.map(inv => ({
+    id: inv._id.toString(),
+    leagueId: inv.leagueId.toString(),
+    token: inv.token,
+    createdBy: inv.createdBy.toString(),
+    maxUses: inv.maxUses,
+    currentUses: inv.currentUses,
+    expiresAt: inv.expiresAt?.toISOString() || null,
+    isActive: inv.isActive,
+    createdAt: inv.createdAt.toISOString(),
+    updatedAt: inv.updatedAt.toISOString(),
+    league: {
+      id: inv.league._id.toString(),
+      name: inv.league.name,
+      description: inv.league.description,
+      sportsLeague: inv.league.sportsLeague,
+      memberCount: inv.league.memberCount,
+    },
+    creator: {
+      id: inv.creator._id.toString(),
+      username: inv.creator.username,
+    },
+  }))
+}
+
+export async function getInvitationByToken(token: string): Promise<InvitationAcceptanceInfo | null> {
+  const db = await getDatabase()
+  
+  const invitations = await db.collection(Collections.LEAGUE_INVITATIONS)
+    .aggregate([
+      { $match: { token } },
+      {
+        $lookup: {
+          from: Collections.LEAGUES,
+          localField: 'leagueId',
+          foreignField: '_id',
+          as: 'league'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.USERS,
+          localField: 'createdBy',
+          foreignField: '_id',
+          as: 'creator'
+        }
+      },
+      { $unwind: '$league' },
+      { $unwind: '$creator' }
+    ]).limit(1).toArray()
+  
+  if (invitations.length === 0) {
+    return null
+  }
+  
+  const inv = invitations[0]
+  const now = new Date()
+  const isExpired = inv.expiresAt && new Date(inv.expiresAt) < now
+  const isAtMaxUses = inv.maxUses && inv.currentUses >= inv.maxUses
+  
+  return {
+    invitation: {
+      id: inv._id.toString(),
+      token: inv.token,
+      isValid: inv.isActive && !isExpired && !isAtMaxUses,
+      isExpired: !!isExpired,
+      isAtMaxUses: !!isAtMaxUses,
+    },
+    league: {
+      id: inv.league._id.toString(),
+      name: inv.league.name,
+      description: inv.league.description,
+      sportsLeague: inv.league.sportsLeague,
+      memberCount: inv.league.memberCount,
+    },
+    creator: {
+      username: inv.creator.username,
+    },
+  }
+}
+
+export async function acceptInvitation(
+  token: string,
+  userId: string,
+  teamName: string
+): Promise<{ success: boolean; membership?: LeagueMembership; error?: string }> {
+  const db = await getDatabase()
+  
+  const invitation = await getInvitationByToken(token)
+  if (!invitation) {
+    return { success: false, error: 'Invitation not found' }
+  }
+  
+  if (!invitation.invitation.isValid) {
+    if (invitation.invitation.isExpired) {
+      return { success: false, error: 'Invitation has expired' }
+    }
+    if (invitation.invitation.isAtMaxUses) {
+      return { success: false, error: 'Invitation has reached maximum uses' }
+    }
+    return { success: false, error: 'Invitation is no longer valid' }
+  }
+  
+  // Check if user is already a member
+  const existingMembership = await db.collection(Collections.LEAGUE_MEMBERSHIPS).findOne({
+    leagueId: new ObjectId(invitation.league.id),
+    userId: new ObjectId(userId)
+  })
+  
+  if (existingMembership) {
+    return { success: false, error: 'You are already a member of this league' }
+  }
+  
+  // Create league membership
+  const membership = await createLeagueMembership(
+    invitation.league.id,
+    userId,
+    teamName,
+    false // not admin
+  )
+  
+  // Update invitation usage
+  await db.collection(Collections.LEAGUE_INVITATIONS).updateOne(
+    { token },
+    {
+      $inc: { currentUses: 1 },
+      $set: { updatedAt: new Date() }
+    }
+  )
+  
+  return { success: true, membership }
+}
+
+export async function revokeInvitation(invitationId: string): Promise<boolean> {
+  const db = await getDatabase()
+  
+  const result = await db.collection(Collections.LEAGUE_INVITATIONS).updateOne(
+    { _id: new ObjectId(invitationId) },
+    {
+      $set: {
+        isActive: false,
+        updatedAt: new Date()
+      }
+    }
+  )
+  
+  return result.matchedCount > 0
+}
+
+export async function createInvitationIndexes() {
+  const db = await getDatabase()
+  
+  // Index for invitation lookup by token
+  await db.collection(Collections.LEAGUE_INVITATIONS).createIndex(
+    { token: 1 },
+    { name: 'invitations_token' }
+  )
+  
+  // Index for admin listing invitations by league
+  await db.collection(Collections.LEAGUE_INVITATIONS).createIndex(
+    { leagueId: 1, isActive: 1 },
+    { name: 'invitations_league_active' }
+  )
+  
+  // Index for cleanup of expired invitations
+  await db.collection(Collections.LEAGUE_INVITATIONS).createIndex(
+    { expiresAt: 1 },
+    { name: 'invitations_expires' }
+  )
+  
+  console.log('✓ Invitation indexes created')
 }

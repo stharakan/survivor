@@ -53,4 +53,5 @@ export const Collections = {
   GAMES: 'games',
   PICKS: 'picks',
   JOIN_REQUESTS: 'join_requests',
+  LEAGUE_INVITATIONS: 'league_invitations',
 } as const

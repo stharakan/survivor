@@ -224,3 +224,36 @@ export async function makePick(userId: string, gameId: number, teamId: number, l
 export async function getPlayerProfile(playerId: number, leagueId: number): Promise<Player | null> {
   throw new Error('getPlayerProfile not implemented yet')
 }
+
+// Invitation API functions
+export async function createLeagueInvitation(
+  leagueId: number,
+  maxUses: number | null,
+  expiresAt: string | null
+): Promise<any> {
+  return apiRequest(`/leagues/${leagueId}/invitations`, {
+    method: 'POST',
+    body: JSON.stringify({ maxUses, expiresAt }),
+  })
+}
+
+export async function getLeagueInvitations(leagueId: number): Promise<any[]> {
+  return apiRequest(`/leagues/${leagueId}/invitations`)
+}
+
+export async function getInvitationByToken(token: string): Promise<any> {
+  return apiRequest(`/invite/${token}`)
+}
+
+export async function acceptInvitation(token: string, teamName: string): Promise<any> {
+  return apiRequest(`/invite/${token}/accept`, {
+    method: 'POST',
+    body: JSON.stringify({ teamName }),
+  })
+}
+
+export async function revokeInvitation(invitationId: string): Promise<void> {
+  return apiRequest(`/invitations/${invitationId}`, {
+    method: 'DELETE',
+  })
+}

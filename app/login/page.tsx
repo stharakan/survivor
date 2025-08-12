@@ -2,8 +2,9 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect, Suspense } from "react"
 import { useAuth } from "@/hooks/use-auth"
+import { useSearchParams, useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,11 +14,14 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import Image from "next/image"
 import Link from "next/link"
 
-export default function LoginPage() {
+function LoginContent() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const { login, loading } = useAuth()
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const redirect = searchParams.get('redirect')
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -25,6 +29,10 @@ export default function LoginPage() {
 
     try {
       await login(email, password)
+      // Redirect to the specified URL after successful login
+      if (redirect) {
+        router.push(redirect)
+      }
     } catch (err) {
       setError("Invalid email or password. Please try again.")
     }
@@ -98,12 +106,28 @@ export default function LoginPage() {
         <CardFooter className="flex justify-center border-t-2 border-black pt-4">
           <p className="text-sm text-muted-foreground">
             Don't have an account?{" "}
-            <Link href="/register" className="text-retro-orange hover:underline font-heading">
+            <Link 
+              href={redirect ? `/register?redirect=${encodeURIComponent(redirect)}` : "/register"} 
+              className="text-retro-orange hover:underline font-heading"
+            >
               Sign up
             </Link>
           </p>
         </CardFooter>
       </Card>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-retro-orange"></div>
+        <p className="font-pixel text-lg">Loading...</p>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }

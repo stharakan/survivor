@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Switch } from "@/components/ui/switch"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, Settings, UserCheck, Clock } from "lucide-react"
+import { Users, Settings, UserCheck, Clock, Mail } from "lucide-react"
 import Image from "next/image"
 import { AdminGuard } from "@/components/admin-guard"
 import Link from "next/link"
@@ -276,6 +276,12 @@ function AdminPortalContent() {
                   <Button variant="pixel" className="w-full">
                     <Settings className="h-4 w-4 mr-2" />
                     Edit League Settings
+                  </Button>
+                </Link>
+                <Link href="/admin/invitations">
+                  <Button variant="pixel" className="w-full">
+                    <Mail className="h-4 w-4 mr-2" />
+                    Manage Invitations
                   </Button>
                 </Link>
               </div>

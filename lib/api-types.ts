@@ -68,6 +68,16 @@ export const scoringResultSchema = z.object({
   completedAt: z.string(),
 })
 
+// Invitation schemas
+export const createInvitationSchema = z.object({
+  maxUses: z.number().int().positive().nullable(),
+  expiresAt: z.string().datetime().nullable(),
+})
+
+export const acceptInvitationSchema = z.object({
+  teamName: z.string().min(1, 'Team name is required'),
+})
+
 // Request type inference
 export type LoginRequest = z.infer<typeof loginSchema>
 export type RegisterRequest = z.infer<typeof registerSchema>
@@ -76,6 +86,8 @@ export type JoinLeagueRequest = z.infer<typeof joinLeagueSchema>
 export type MakePickRequest = z.infer<typeof makePickSchema>
 export type UpdateMemberRequest = z.infer<typeof updateMemberSchema>
 export type ScoringResultResponse = z.infer<typeof scoringResultSchema>
+export type CreateInvitationRequest = z.infer<typeof createInvitationSchema>
+export type AcceptInvitationRequest = z.infer<typeof acceptInvitationSchema>
 
 // Helper function to create API responses
 export function createApiResponse<T>(
