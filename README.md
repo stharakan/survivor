@@ -4,7 +4,7 @@ A retro-styled multi-league Survivor League web application built with Next.js, 
 
 ## Overview
 
-This is a fantasy football application that supports multiple Survivor Leagues within the same platform. In each league, players pick one team each week from the associated sports league (EPL, NFL, NBA, etc.). If their chosen team wins, they survive to the next week. The goal is to survive as long as possible throughout the season. Each team can only be picked once per season within each league, adding strategic depth to the game.
+This is a fantasy football application that supports multiple Survivor Leagues within the same platform. In each league, players pick one team each week from the associated sports league (EPL, NFL, NBA, etc.). If their chosen team wins, they survive to the next week. The goal is to survive as long as possible throughout the season. Each team can be picked up to twice per season within each league, adding strategic depth to the game.
 
 ## Key Features
 

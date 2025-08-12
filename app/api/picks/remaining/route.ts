@@ -24,12 +24,12 @@ export async function GET(request: NextRequest) {
     
     // Create picks remaining data
     const picksRemaining = teams.map((team) => {
-      // Check if team has been picked already by this user in this league
-      const isPicked = userPicks.some((pick) => pick.team.id === team.id)
+      // Count how many times this team has been picked by this user in this league
+      const pickCount = userPicks.filter((pick) => pick.team.id === team.id).length
       return {
         team,
-        // In survivor league, you can only pick a team once
-        remaining: isPicked ? 0 : 1,
+        // In survivor league, you can pick a team up to twice
+        remaining: Math.max(0, 2 - pickCount),
       }
     })
     

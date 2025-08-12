@@ -6,6 +6,7 @@ import { getPicksRemaining } from "@/lib/api"
 import type { Team } from "@/types/team"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { BatteryIndicator } from "@/components/ui/battery-indicator"
 import { redirect } from "next/navigation"
 import Image from "next/image"
 
@@ -64,7 +65,7 @@ export default function PicksRemainingPage() {
         <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
           <CardTitle>Teams You Can Still Pick</CardTitle>
           <CardDescription className="text-white/80">
-            In Survivor League, you can only pick each team once per season
+            In Survivor League, you can pick each team up to twice per season
           </CardDescription>
         </CardHeader>
         <CardContent className="pt-6">
@@ -91,11 +92,7 @@ export default function PicksRemainingPage() {
                       <img src={pick.team.logo || "/placeholder.svg"} alt={pick.team.name} className="w-8 h-8" />
                       <span className="font-medium">{pick.team.name}</span>
                     </div>
-                    <span
-                      className={`font-bold ${pick.remaining > 0 ? "text-green-600 dark:text-green-400" : "text-red-500"}`}
-                    >
-                      {pick.remaining > 0 ? "Available" : "Used"}
-                    </span>
+                    <BatteryIndicator remaining={pick.remaining} />
                   </div>
                 </div>
               ))}

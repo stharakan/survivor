@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format, isPast, addHours } from "date-fns"
 import { CheckCircle, AlertCircle, Clock, ListChecks, X } from "lucide-react"
+import { BatteryIndicator } from "@/components/ui/battery-indicator"
 import { 
   computeGameStatus,
   canPickFromGame,
@@ -154,10 +155,16 @@ function MakePicksContent() {
     return games.some(game => canPickFromGame(game))
   }
 
-  // Check if a team has already been used
+  // Check if a team has already been used (no picks remaining)
   const isTeamUsed = (teamId: number) => {
     const team = picksRemaining.find((p) => p.team.id === teamId)
     return team ? team.remaining === 0 : false
+  }
+
+  // Get remaining picks for a specific team
+  const getTeamRemaining = (teamId: number) => {
+    const team = picksRemaining.find((p) => p.team.id === teamId)
+    return team ? team.remaining : 0
   }
 
   return (
@@ -217,13 +224,7 @@ function MakePicksContent() {
                           <img src={pick.team.logo || "/placeholder.svg"} alt={pick.team.name} className="w-6 h-6" />
                           <span className="font-medium text-sm">{pick.team.name}</span>
                         </div>
-                        <span
-                          className={`text-sm font-bold ${
-                            pick.remaining > 0 ? "text-green-600 dark:text-green-400" : "text-red-500"
-                          }`}
-                        >
-                          {pick.remaining > 0 ? "Available" : "Used"}
-                        </span>
+                        <BatteryIndicator remaining={pick.remaining} />
                       </div>
                     ))}
                 </div>
@@ -299,7 +300,7 @@ function MakePicksContent() {
           </div>
           <CardDescription className="text-white/80">
             {hasPickableGames() ? (
-              "Choose one team for this week. Remember: You can only pick each team once per season!"
+              "Choose one team for this week. Remember: You can pick each team up to twice per season!"
             ) : userPickForWeek ? (
               "You have made your pick for this week. You can change it if there are games that haven't started yet."
             ) : (
@@ -369,7 +370,7 @@ function MakePicksContent() {
                           />
                           <span className="font-medium">{game.homeTeam.name}</span>
                           <span className="text-sm">(Home)</span>
-                          {isHomeTeamUsed && <span className="text-xs text-red-500 mt-1 font-bold">Already Used</span>}
+                          <BatteryIndicator remaining={getTeamRemaining(game.homeTeam.id)} className="mt-1" />
                         </div>
 
                         <div className="text-center">
@@ -391,7 +392,7 @@ function MakePicksContent() {
                           />
                           <span className="font-medium">{game.awayTeam.name}</span>
                           <span className="text-sm">(Away)</span>
-                          {isAwayTeamUsed && <span className="text-xs text-red-500 mt-1 font-bold">Already Used</span>}
+                          <BatteryIndicator remaining={getTeamRemaining(game.awayTeam.id)} className="mt-1" />
                         </div>
                       </div>
                     </CardContent>
