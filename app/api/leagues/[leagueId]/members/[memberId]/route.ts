@@ -70,13 +70,29 @@ export async function PATCH(
     
     // Parse request body
     const body = await request.json()
-    const updates: { isPaid?: boolean; isAdmin?: boolean } = {}
+    const updates: { isPaid?: boolean; isAdmin?: boolean; teamName?: string } = {}
     
     if (typeof body.isPaid === 'boolean') {
       updates.isPaid = body.isPaid
     }
     if (typeof body.isAdmin === 'boolean') {
       updates.isAdmin = body.isAdmin
+    }
+    if (typeof body.teamName === 'string') {
+      const trimmed = body.teamName.trim()
+      if (trimmed.length === 0) {
+        return Response.json(
+          createApiResponse(false, undefined, 'Team name cannot be empty'),
+          { status: 400 }
+        )
+      }
+      if (trimmed.length > 100) {
+        return Response.json(
+          createApiResponse(false, undefined, 'Team name must be 100 characters or less'),
+          { status: 400 }
+        )
+      }
+      updates.teamName = trimmed
     }
     
     if (Object.keys(updates).length === 0) {

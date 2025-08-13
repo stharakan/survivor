@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getLeagueMembers } from '@/lib/db'
+import { getLeagueMembersWithUserData } from '@/lib/db'
 import { createApiResponse, handleApiError } from '@/lib/api-types'
 import jwt from 'jsonwebtoken'
 
@@ -28,7 +28,7 @@ export async function GET(
       )
     }
     
-    const members = await getLeagueMembers(params.leagueId)
+    const members = await getLeagueMembersWithUserData(params.leagueId)
     return Response.json(createApiResponse(true, members))
   } catch (error) {
     return handleApiError(error)

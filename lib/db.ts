@@ -11,13 +11,12 @@ import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 
 // User operations
-export async function createUser(email: string, username: string, password: string): Promise<User> {
+export async function createUser(email: string, password: string): Promise<User> {
   const db = await getDatabase()
   const hashedPassword = await bcrypt.hash(password, 12)
   
   const result = await db.collection(Collections.USERS).insertOne({
     email,
-    username,
     password: hashedPassword,
     createdAt: new Date(),
   })
@@ -25,7 +24,6 @@ export async function createUser(email: string, username: string, password: stri
   return {
     id: result.insertedId.toString(),
     email,
-    username,
   } as User
 }
 
@@ -38,7 +36,7 @@ export async function getUserByEmail(email: string): Promise<User | null> {
   return {
     id: user._id.toString(),
     email: user.email,
-    username: user.username,
+    name: user.name,
   } as User
 }
 
@@ -51,7 +49,7 @@ export async function getUserById(id: string): Promise<User | null> {
   return {
     id: user._id.toString(),
     email: user.email,
-    username: user.username,
+    name: user.name,
   } as User
 }
 
@@ -67,7 +65,30 @@ export async function verifyPassword(email: string, password: string): Promise<U
   return {
     id: user._id.toString(),
     email: user.email,
-    username: user.username,
+    name: user.name,
+  } as User
+}
+
+export async function updateUser(id: string, updates: Partial<Pick<User, 'name'>>): Promise<User | null> {
+  const db = await getDatabase()
+  
+  const updateData: any = {}
+  if (updates.name !== undefined) {
+    updateData.name = updates.name?.trim() || null
+  }
+  
+  const result = await db.collection(Collections.USERS).findOneAndUpdate(
+    { _id: new ObjectId(id) },
+    { $set: updateData },
+    { returnDocument: 'after' }
+  )
+  
+  if (!result) return null
+  
+  return {
+    id: result._id.toString(),
+    email: result.email,
+    name: result.name,
   } as User
 }
 
@@ -338,6 +359,65 @@ export async function getLeagueMembers(leagueId: string): Promise<LeagueMembersh
   })) as LeagueMembership[]
 }
 
+export async function getLeagueMembersWithUserData(leagueId: string): Promise<Array<LeagueMembership & { userDetails: User }>> {
+  const db = await getDatabase()
+  
+  const memberships = await db.collection(Collections.LEAGUE_MEMBERSHIPS)
+    .aggregate([
+      { $match: { leagueId: new ObjectId(leagueId) } },
+      {
+        $lookup: {
+          from: Collections.LEAGUES,
+          localField: 'leagueId',
+          foreignField: '_id',
+          as: 'league'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.USERS,
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'userDetails'
+        }
+      },
+      { $unwind: '$league' },
+      { $unwind: '$userDetails' }
+    ]).toArray()
+  
+  return memberships.map(membership => ({
+    id: membership._id.toString(),
+    league: {
+      id: membership.league._id.toString(),
+      name: membership.league.name,
+      description: membership.league.description,
+      sportsLeague: membership.league.sportsLeague,
+      season: membership.league.season,
+      isPublic: membership.league.isPublic,
+      requiresApproval: membership.league.requiresApproval,
+      createdBy: membership.league.createdBy.toString(),
+      isActive: membership.league.isActive,
+      memberCount: membership.league.memberCount,
+      createdAt: membership.league.createdAt.toISOString(),
+    },
+    user: membership.userId.toString(),
+    teamName: membership.teamName,
+    points: membership.points,
+    strikes: membership.strikes,
+    rank: membership.rank,
+    isActive: membership.isActive,
+    isAdmin: membership.isAdmin,
+    isPaid: membership.isPaid,
+    status: membership.status,
+    joinedAt: membership.joinedAt.toISOString(),
+    userDetails: {
+      id: membership.userDetails._id.toString(),
+      email: membership.userDetails.email,
+      name: membership.userDetails.name,
+    }
+  }))
+}
+
 export async function getLeagueMember(leagueId: string, memberId: string): Promise<LeagueMembership | null> {
   const db = await getDatabase()
   
@@ -396,7 +476,7 @@ export async function getLeagueMember(leagueId: string, memberId: string): Promi
 export async function updateMemberStatus(
   leagueId: string,
   memberId: string,
-  updates: { isPaid?: boolean; isAdmin?: boolean }
+  updates: { isPaid?: boolean; isAdmin?: boolean; teamName?: string }
 ): Promise<void> {
   const db = await getDatabase()
   
@@ -406,6 +486,25 @@ export async function updateMemberStatus(
   }
   if (typeof updates.isAdmin === 'boolean') {
     updateDoc.isAdmin = updates.isAdmin
+  }
+  if (typeof updates.teamName === 'string') {
+    const trimmedTeamName = updates.teamName.trim()
+    if (!trimmedTeamName) {
+      throw new Error('Team name cannot be empty')
+    }
+    
+    // Check if team name is already taken in this league by another member
+    const existingMember = await db.collection(Collections.LEAGUE_MEMBERSHIPS).findOne({
+      leagueId: new ObjectId(leagueId),
+      teamName: trimmedTeamName,
+      _id: { $ne: new ObjectId(memberId) }
+    })
+    
+    if (existingMember) {
+      throw new Error('Team name is already taken in this league')
+    }
+    
+    updateDoc.teamName = trimmedTeamName
   }
   
   await db.collection(Collections.LEAGUE_MEMBERSHIPS).updateOne(

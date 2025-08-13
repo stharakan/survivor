@@ -43,13 +43,18 @@ export async function loginUser(email: string, password: string): Promise<{ user
 
 export async function registerUser(
   email: string, 
-  username: string, 
   password: string, 
-  confirmPassword: string
+  confirmPassword: string,
+  displayName?: string
 ): Promise<{ user: User; token: string }> {
+  const payload: any = { email, password, confirmPassword }
+  if (displayName?.trim()) {
+    payload.displayName = displayName.trim()
+  }
+  
   return apiRequest('/auth/register', {
     method: 'POST',
-    body: JSON.stringify({ email, username, password, confirmPassword }),
+    body: JSON.stringify(payload),
   })
 }
 
@@ -109,6 +114,13 @@ export async function getProfile(userId: string, leagueId: number): Promise<User
   return apiRequest(`/users/${userId}?league_id=${leagueId}`)
 }
 
+export async function updateUserProfile(userId: string, updates: { name?: string }): Promise<User> {
+  return apiRequest(`/users/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  })
+}
+
 // Placeholder functions for features not yet implemented in the API
 // These maintain the same interface as the original API but throw "not implemented" errors
 
@@ -128,7 +140,7 @@ export async function getLeagueMember(leagueId: number, memberId: number): Promi
 export async function updateMemberStatus(
   leagueId: number,
   memberId: string,
-  updates: { isPaid?: boolean; isAdmin?: boolean },
+  updates: { isPaid?: boolean; isAdmin?: boolean; teamName?: string },
 ): Promise<LeagueMembership> {
   return apiRequest(`/leagues/${leagueId}/members/${memberId}`, {
     method: 'PATCH',

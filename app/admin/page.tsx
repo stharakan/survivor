@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
 import { getLeagueMembers, getJoinRequests, updateMemberStatus } from "@/lib/api"
 import type { LeagueMembership, JoinRequest } from "@/types/league"
+import type { User } from "@/types/user"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,13 +17,22 @@ import Image from "next/image"
 import { AdminGuard } from "@/components/admin-guard"
 import Link from "next/link"
 
+type MemberWithUserDetails = LeagueMembership & { userDetails: User }
+
 function AdminPortalContent() {
   const { user } = useAuth()
   const { currentLeague } = useLeague()
-  const [members, setMembers] = useState<LeagueMembership[]>([])
+  const [members, setMembers] = useState<MemberWithUserDetails[]>([])
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingMembers, setUpdatingMembers] = useState<Set<string>>(new Set())
+
+  // Helper function to format member display name
+  const formatMemberDisplayName = (member: MemberWithUserDetails) => {
+    return member.userDetails.name 
+      ? `${member.teamName} (${member.userDetails.name})`
+      : member.teamName
+  }
 
   useEffect(() => {
     const fetchData = async () => {
@@ -50,7 +60,7 @@ function AdminPortalContent() {
     fetchData()
   }, [user, currentLeague])
 
-  const handleTogglePayment = async (member: LeagueMembership) => {
+  const handleTogglePayment = async (member: MemberWithUserDetails) => {
     if (!currentLeague) return
     
     const memberId = member.id.toString()
@@ -183,7 +193,7 @@ function AdminPortalContent() {
                     <div key={member.id} className="p-4 flex items-center justify-between">
                       <div className="flex items-center gap-4">
                         <div>
-                          <div className="font-bold">{member.teamName}</div>
+                          <div className="font-bold">{formatMemberDisplayName(member)}</div>
                           <div className="text-sm text-muted-foreground">
                             Rank #{member.rank} • {member.points} points • {member.strikes} strikes
                           </div>

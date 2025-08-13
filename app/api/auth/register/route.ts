@@ -1,12 +1,12 @@
 import { NextRequest } from 'next/server'
-import { createUser, getUserByEmail } from '@/lib/db'
+import { createUser, getUserByEmail, updateUser } from '@/lib/db'
 import { registerSchema, createApiResponse, handleApiError } from '@/lib/api-types'
 import jwt from 'jsonwebtoken'
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { email, username, password } = registerSchema.parse(body)
+    const { email, password, displayName } = registerSchema.parse(body)
     
     // Check if user already exists
     const existingUser = await getUserByEmail(email)
@@ -18,7 +18,12 @@ export async function POST(request: NextRequest) {
     }
     
     // Create new user
-    const user = await createUser(email, username, password)
+    const user = await createUser(email, password)
+    
+    // Set display name if provided
+    if (displayName?.trim()) {
+      await updateUser(user.id, { name: displayName.trim() })
+    }
     
     // Create JWT token (same as login endpoint)
     const token = jwt.sign(

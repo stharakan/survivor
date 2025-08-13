@@ -16,7 +16,7 @@ import Link from "next/link"
 
 function RegisterContent() {
   const [email, setEmail] = useState("")
-  const [username, setUsername] = useState("")
+  const [displayName, setDisplayName] = useState("")
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [error, setError] = useState("")
@@ -36,7 +36,7 @@ function RegisterContent() {
     }
 
     try {
-      await register(email, username, password, confirmPassword)
+      await register(email, password, confirmPassword, displayName)
       // Redirect to the specified URL after successful registration
       if (redirect) {
         router.push(redirect)
@@ -92,18 +92,21 @@ function RegisterContent() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="username" className="font-heading text-sm">
-                Username
+              <Label htmlFor="displayName" className="font-heading text-sm">
+                Display Name (optional)
               </Label>
               <Input
-                id="username"
+                id="displayName"
                 type="text"
-                placeholder="Choose a username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
+                placeholder="e.g. Joe"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                maxLength={12}
                 className="border-2 border-black"
               />
+              <p className="text-xs text-muted-foreground">
+                This helps admins know who you are
+              </p>
             </div>
 
             <div className="space-y-2">

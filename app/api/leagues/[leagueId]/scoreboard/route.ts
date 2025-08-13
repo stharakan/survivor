@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server'
-import { getLeagueMembers } from '@/lib/db'
+import { getLeagueMembersWithUserData } from '@/lib/db'
 import { createApiResponse, handleApiError } from '@/lib/api-types'
 import type { Player } from '@/types/player'
 
@@ -9,18 +9,24 @@ export async function GET(
   { params }: { params: { leagueId: string } }
 ) {
   try {
-    const members = await getLeagueMembers(params.leagueId)
+    const members = await getLeagueMembersWithUserData(params.leagueId)
     
-    // Convert memberships to player scoreboard format
+    // Convert memberships to player scoreboard format with "TeamName (Name)" format
     const players: Player[] = members
       .filter(member => member.status === 'active')
-      .map(member => ({
-        id: parseInt(member.user.toString()),
-        name: member.teamName,
-        points: member.points,
-        strikes: member.strikes,
-        rank: member.rank,
-      }))
+      .map(member => {
+        const displayName = member.userDetails.name 
+          ? `${member.teamName} (${member.userDetails.name})`
+          : member.teamName
+        
+        return {
+          id: parseInt(member.user.toString()),
+          name: displayName,
+          points: member.points,
+          strikes: member.strikes,
+          rank: member.rank,
+        }
+      })
       .sort((a, b) => {
         // Sort by points (descending), then by strikes (ascending)
         if (a.points !== b.points) return b.points - a.points

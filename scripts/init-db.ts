@@ -23,7 +23,7 @@ async function clearGamesAndPicks(): Promise<void> {
   console.log(`  ✓ Cleared ${gamesResult.deletedCount} games`)
 }
 
-async function getOrCreateUser(email: string, username: string, password: string): Promise<User> {
+async function getOrCreateUser(email: string, password: string): Promise<User> {
   try {
     const existingUser = await getUserByEmail(email)
     if (existingUser) {
@@ -34,7 +34,7 @@ async function getOrCreateUser(email: string, username: string, password: string
     // User doesn't exist, create new one
   }
   
-  const newUser = await createUser(email, username, password)
+  const newUser = await createUser(email, password)
   console.log(`✓ Created new user: ${newUser.email}`)
   return newUser
 }
@@ -104,13 +104,11 @@ async function initializeDatabase() {
     // Get or create demo users (won't duplicate)
     const demoUser = await getOrCreateUser(
       'sameerdemo@gmail.com',
-      'stdemo', 
       'password123'
     )
     
     const demoUserV = await getOrCreateUser(
       'vikramdemo@gmail.com',
-      'vtdemo',
       'password123'
     )
     

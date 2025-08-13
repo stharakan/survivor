@@ -3,13 +3,15 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getProfile, getUserPicks } from "@/lib/api"
+import { getProfile, getUserPicks, updateUserProfile, updateMemberStatus } from "@/lib/api"
 import type { User } from "@/types/user"
 import type { Pick } from "@/types/pick"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
-import { CheckCircle2, XCircle, MinusCircle, UserIcon, Shield } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { CheckCircle2, XCircle, MinusCircle, UserIcon, Shield, Edit3, Check, X } from "lucide-react"
 import { format } from "date-fns"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
@@ -20,6 +22,12 @@ function ProfileContent() {
   const [profile, setProfile] = useState<User | null>(null)
   const [picks, setPicks] = useState<Pick[]>([])
   const [loading, setLoading] = useState(true)
+  const [isEditingName, setIsEditingName] = useState(false)
+  const [editingName, setEditingName] = useState("")
+  const [savingName, setSavingName] = useState(false)
+  const [isEditingTeamName, setIsEditingTeamName] = useState(false)
+  const [editingTeamName, setEditingTeamName] = useState("")
+  const [savingTeamName, setSavingTeamName] = useState(false)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -41,6 +49,81 @@ function ProfileContent() {
 
     fetchData()
   }, [user, currentLeague])
+
+  const handleEditName = () => {
+    setEditingName(profile?.name || "")
+    setIsEditingName(true)
+  }
+
+  const handleSaveName = async () => {
+    if (!user || savingName) return
+    
+    const trimmedName = editingName.trim()
+    if (trimmedName.length > 12) {
+      alert("Name must be 12 characters or less")
+      return
+    }
+    
+    setSavingName(true)
+    try {
+      const updatedUser = await updateUserProfile(user.id, { 
+        name: trimmedName || undefined 
+      })
+      setProfile(updatedUser)
+      setIsEditingName(false)
+    } catch (error) {
+      console.error("Error updating name:", error)
+      alert("Failed to update name. Please try again.")
+    } finally {
+      setSavingName(false)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditingName(false)
+    setEditingName("")
+  }
+
+
+  const handleEditTeamName = () => {
+    setEditingTeamName(currentMembership?.teamName || "")
+    setIsEditingTeamName(true)
+  }
+
+  const handleSaveTeamName = async () => {
+    if (!currentLeague || !currentMembership || savingTeamName) return
+    
+    const trimmedTeamName = editingTeamName.trim()
+    if (!trimmedTeamName) {
+      alert("Team name cannot be empty")
+      return
+    }
+    if (trimmedTeamName.length > 100) {
+      alert("Team name must be 100 characters or less")
+      return
+    }
+    
+    setSavingTeamName(true)
+    try {
+      await updateMemberStatus(currentLeague.id, currentMembership.id.toString(), { 
+        teamName: trimmedTeamName 
+      })
+      
+      // Refresh the page data to get updated membership
+      window.location.reload()
+    } catch (error) {
+      console.error("Error updating team name:", error)
+      const errorMessage = error instanceof Error ? error.message : "Failed to update team name. Please try again."
+      alert(errorMessage)
+    } finally {
+      setSavingTeamName(false)
+    }
+  }
+
+  const handleCancelTeamNameEdit = () => {
+    setIsEditingTeamName(false)
+    setEditingTeamName("")
+  }
 
   if (loading) {
     return (
@@ -72,13 +155,56 @@ function ProfileContent() {
           </CardHeader>
           <CardContent className="p-6">
             <div className="space-y-4">
+
               <div className="flex items-center gap-3">
-                <div className="bg-retro-blue p-3 rounded-none border-2 border-black">
-                  <UserIcon className="h-6 w-6 text-white" />
+                <div className="bg-retro-purple p-3 rounded-none border-2 border-black">
+                  <Edit3 className="h-6 w-6 text-white" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Username</p>
-                  <p className="text-lg font-bold">{profile?.username || "Player"}</p>
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-muted-foreground">Display Name</p>
+                  {isEditingName ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={editingName}
+                        onChange={(e) => setEditingName(e.target.value)}
+                        placeholder="Enter your name (optional)"
+                        maxLength={12}
+                        className="flex-1 border-2 border-black"
+                        disabled={savingName}
+                      />
+                      <Button 
+                        size="sm" 
+                        variant="pixel" 
+                        onClick={handleSaveName}
+                        disabled={savingName}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleCancelEdit}
+                        disabled={savingName}
+                        className="border-2 border-black"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-lg font-bold flex-1">
+                        {profile?.name || "Not set"}
+                      </p>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleEditName}
+                        className="border-2 border-black"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -86,9 +212,51 @@ function ProfileContent() {
                 <div className="bg-retro-green p-3 rounded-none border-2 border-black">
                   <Shield className="h-6 w-6 text-white" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="text-sm font-medium text-muted-foreground">Team Name</p>
-                  <p className="text-lg font-bold">{currentMembership?.teamName || "Team Name"}</p>
+                  {isEditingTeamName ? (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={editingTeamName}
+                        onChange={(e) => setEditingTeamName(e.target.value)}
+                        placeholder="Enter team name"
+                        maxLength={100}
+                        className="flex-1 border-2 border-black"
+                        disabled={savingTeamName}
+                      />
+                      <Button 
+                        size="sm" 
+                        variant="pixel" 
+                        onClick={handleSaveTeamName}
+                        disabled={savingTeamName}
+                      >
+                        <Check className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleCancelTeamNameEdit}
+                        disabled={savingTeamName}
+                        className="border-2 border-black"
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="text-lg font-bold flex-1">
+                        {currentMembership?.teamName || "Team Name"}
+                      </p>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleEditTeamName}
+                        className="border-2 border-black"
+                      >
+                        <Edit3 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
 

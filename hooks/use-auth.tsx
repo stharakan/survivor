@@ -61,11 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   // Register function
-  const register = async (email: string, username: string, password: string, confirmPassword: string) => {
+  const register = async (email: string, password: string, confirmPassword: string, displayName?: string) => {
     setLoading(true)
     try {
       // Call the register API
-      const { user } = await registerUser(email, username, password, confirmPassword)
+      const { user } = await registerUser(email, password, confirmPassword, displayName)
       setUser(user)
       router.push("/leagues")
     } catch (error) {
