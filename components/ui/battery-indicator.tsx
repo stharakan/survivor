@@ -23,10 +23,10 @@ export function BatteryIndicator({ remaining, className = "" }: BatteryIndicator
       <div className="relative flex">
         {/* Battery body */}
         <div className="flex h-3 w-6 border border-black bg-white dark:bg-gray-900">
-          {/* First bar */}
-          <div className={`w-1/2 border-r border-black ${remaining >= 2 ? getBatteryColor(remaining) : 'bg-gray-300'}`} />
-          {/* Second bar */}
-          <div className={`w-1/2 ${remaining >= 1 ? getBatteryColor(remaining) : 'bg-gray-300'}`} />
+          {/* First bar (left side) */}
+          <div className={`w-1/2 ${remaining === 0 ? '' : 'border-r border-black'} ${remaining >= 1 ? getBatteryColor(remaining) : 'bg-gray-200'}`} />
+          {/* Second bar (right side) */}
+          <div className={`w-1/2 ${remaining >= 2 ? getBatteryColor(remaining) : 'bg-gray-200'}`} />
         </div>
         {/* Battery tip */}
         <div className="h-1.5 w-0.5 border border-l-0 border-black self-center bg-white dark:bg-gray-900" />
