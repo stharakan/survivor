@@ -28,7 +28,7 @@ function MemberManagementContent() {
   const [error, setError] = useState<string | null>(null)
   const params = useParams()
   const router = useRouter()
-  const memberId = Number(params.id)
+  const memberId = params.id as string
 
   useEffect(() => {
     const fetchMember = async () => {

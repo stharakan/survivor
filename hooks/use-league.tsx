@@ -42,7 +42,7 @@ export function LeagueProvider({ children }: { children: React.ReactNode }) {
         // Check if there's a stored league selection
         const storedLeagueId = localStorage.getItem("selectedLeagueId")
         if (storedLeagueId) {
-          const storedMembership = leagues.find((m) => m.league.id === Number.parseInt(storedLeagueId))
+          const storedMembership = leagues.find((m) => m.league.id.toString() === storedLeagueId)
           if (storedMembership && storedMembership.status === "active") {
             setCurrentLeague(storedMembership.league)
             setCurrentMembership(storedMembership)

@@ -5,10 +5,12 @@ import { createApiResponse, handleApiError } from '@/lib/api-types'
 // GET /api/users/[userId] - Get user profile
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
-    const user = await getUserById(params.userId)
+    // Await params for Next.js 15 compatibility
+    const { userId } = await params
+    const user = await getUserById(userId)
     
     if (!user) {
       return Response.json(
@@ -26,9 +28,11 @@ export async function GET(
 // PATCH /api/users/[userId] - Update user profile
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> }
 ) {
   try {
+    // Await params for Next.js 15 compatibility
+    const { userId } = await params
     const body = await request.json()
     const { name } = body
     
@@ -51,7 +55,7 @@ export async function PATCH(
     const updates: any = {}
     if (name !== undefined) updates.name = name
     
-    const updatedUser = await updateUser(params.userId, updates)
+    const updatedUser = await updateUser(userId, updates)
     
     if (!updatedUser) {
       return Response.json(

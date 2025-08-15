@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
-import { getLeagueMember, updateMemberStatus } from '@/lib/db'
+import { getLeagueMember, updateMemberStatus, removeMemberFromLeague } from '@/lib/db'
 import { createApiResponse, handleApiError, updateMemberSchema } from '@/lib/api-types'
-import { authorizeRequest, logAdminPrivilegeChange, verifyAuthToken } from '@/lib/auth-utils'
+import { authorizeRequest, logAdminPrivilegeChange, verifyAuthToken, validateAdminPermission } from '@/lib/auth-utils'
 import jwt from 'jsonwebtoken'
 
 // GET /api/leagues/[leagueId]/members/[memberId] - Get individual member
@@ -127,6 +127,108 @@ export async function PATCH(
       )
     }
     
+    return handleApiError(error)
+  }
+}
+
+// DELETE /api/leagues/[leagueId]/members/[memberId] - Remove member from league
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ leagueId: string; memberId: string }> }
+) {
+  try {
+    // Await params for Next.js 15 compatibility
+    const { leagueId, memberId } = await params
+    
+    // Verify authentication and get user context
+    const authUser = await verifyAuthToken(request)
+    
+    // Get the member to be removed for validation and logging
+    const targetMember = await getLeagueMember(leagueId, memberId)
+    if (!targetMember) {
+      return Response.json(
+        createApiResponse(false, undefined, 'Member not found'),
+        { status: 404 }
+      )
+    }
+    
+    // Validate admin permission for member removal
+    try {
+      await validateAdminPermission(authUser.userId, leagueId, memberId)
+    } catch (authError: any) {
+      const status = authError.message.includes('not a member') ||
+                    authError.message.includes('Only league administrators') ? 403 : 400
+      
+      return Response.json(
+        createApiResponse(false, undefined, authError.message),
+        { status }
+      )
+    }
+    
+    // Additional business rules for member removal
+    
+    // Prevent self-removal
+    if (authUser.userId === targetMember.user) {
+      return Response.json(
+        createApiResponse(false, undefined, 'Cannot remove your own membership'),
+        { status: 403 }
+      )
+    }
+    
+    // Prevent removing league creator
+    if (targetMember.league.createdBy === targetMember.user) {
+      return Response.json(
+        createApiResponse(false, undefined, 'Cannot remove league creator from league'),
+        { status: 403 }
+      )
+    }
+    
+    // Perform the member removal (soft delete)
+    await removeMemberFromLeague(leagueId, memberId, authUser.userId)
+    
+    // Log the removal action for audit trail
+    try {
+      const auditLogEntry = {
+        timestamp: new Date().toISOString(),
+        action: 'member_removal',
+        requestingUserId: authUser.userId,
+        leagueId,
+        targetMemberId: memberId,
+        targetMemberTeamName: targetMember.teamName,
+        context: {
+          requestIP: request.headers.get('x-forwarded-for') || request.headers.get('x-real-ip') || 'unknown',
+          userAgent: request.headers.get('user-agent') || 'unknown'
+        }
+      }
+      
+      // Log to console and attempt to store in audit collection
+      console.log('AUDIT LOG - MEMBER REMOVAL:', JSON.stringify(auditLogEntry, null, 2))
+      
+      const { getDatabase } = await import('@/lib/mongodb')
+      const db = await getDatabase()
+      await db.collection('audit_logs').insertOne(auditLogEntry)
+    } catch (logError) {
+      console.error('Failed to log member removal:', logError)
+      // Continue execution - audit logging failure shouldn't break the operation
+    }
+    
+    return Response.json(
+      createApiResponse(
+        true, 
+        { 
+          message: `${targetMember.teamName} has been removed from the league`,
+          removedMember: {
+            id: targetMember.id,
+            teamName: targetMember.teamName,
+            removedAt: new Date().toISOString()
+          }
+        },
+        undefined,
+        'Member removed successfully'
+      )
+    )
+  } catch (error: any) {
+    console.error('Error removing member:', error)
     return handleApiError(error)
   }
 }

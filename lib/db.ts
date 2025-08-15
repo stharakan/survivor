@@ -516,6 +516,50 @@ export async function updateMemberStatus(
   )
 }
 
+export async function removeMemberFromLeague(
+  leagueId: string,
+  memberId: string,
+  removedBy: string
+): Promise<void> {
+  const db = await getDatabase()
+  
+  // Get the member to verify they exist and get current status
+  const existingMember = await db.collection(Collections.LEAGUE_MEMBERSHIPS).findOne({
+    _id: new ObjectId(memberId),
+    leagueId: new ObjectId(leagueId)
+  })
+  
+  if (!existingMember) {
+    throw new Error('Member not found')
+  }
+  
+  if (!existingMember.isActive) {
+    throw new Error('Member is already inactive')
+  }
+  
+  // Soft delete the member by marking as inactive
+  await db.collection(Collections.LEAGUE_MEMBERSHIPS).updateOne(
+    {
+      _id: new ObjectId(memberId),
+      leagueId: new ObjectId(leagueId)
+    },
+    {
+      $set: {
+        isActive: false,
+        status: 'removed',
+        removedAt: new Date(),
+        removedBy: new ObjectId(removedBy)
+      }
+    }
+  )
+  
+  // Update league member count (only count active members)
+  await db.collection(Collections.LEAGUES).updateOne(
+    { _id: new ObjectId(leagueId) },
+    { $inc: { memberCount: -1 } }
+  )
+}
+
 // Game operations
 export async function createGame(
   week: number,

@@ -102,7 +102,7 @@ export async function getUserLeagues(userId: string): Promise<LeagueMembership[]
   return apiRequest(`/users/${userId}/leagues`)
 }
 
-export async function getLeagueMembers(leagueId: number): Promise<LeagueMembership[]> {
+export async function getLeagueMembers(leagueId: number | string): Promise<LeagueMembership[]> {
   return apiRequest(`/leagues/${leagueId}/members`)
 }
 
@@ -133,7 +133,7 @@ export async function requestToJoinLeague(
   throw new Error('requestToJoinLeague not implemented yet')
 }
 
-export async function getLeagueMember(leagueId: number, memberId: number): Promise<LeagueMembership | null> {
+export async function getLeagueMember(leagueId: number | string, memberId: number | string): Promise<LeagueMembership | null> {
   return apiRequest(`/leagues/${leagueId}/members/${memberId}`)
 }
 
@@ -148,12 +148,16 @@ export async function updateMemberStatus(
   })
 }
 
-export async function removeMemberFromLeague(leagueId: number, memberId: number): Promise<void> {
-  throw new Error('removeMemberFromLeague not implemented yet')
+export async function removeMemberFromLeague(leagueId: number | string, memberId: number | string): Promise<void> {
+  return apiRequest(`/leagues/${leagueId}/members/${memberId}`, {
+    method: 'DELETE',
+  })
 }
 
 export async function getJoinRequests(leagueId: number): Promise<JoinRequest[]> {
-  throw new Error('getJoinRequests not implemented yet')
+  // TODO: Implement join requests API when needed
+  // For now, return empty array to prevent console errors
+  return []
 }
 
 export async function approveJoinRequest(requestId: number): Promise<void> {

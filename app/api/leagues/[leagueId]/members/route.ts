@@ -6,9 +6,12 @@ import jwt from 'jsonwebtoken'
 // GET /api/leagues/[leagueId]/members - Get league members
 export async function GET(
   request: NextRequest,
-  { params }: { params: { leagueId: string } }
+  { params }: { params: Promise<{ leagueId: string }> }
 ) {
   try {
+    // Await params for Next.js 15 compatibility
+    const { leagueId } = await params
+    
     // Verify authentication
     const token = request.cookies.get('auth-token')?.value
     if (!token) {
@@ -28,7 +31,7 @@ export async function GET(
       )
     }
     
-    const members = await getLeagueMembersWithUserData(params.leagueId)
+    const members = await getLeagueMembersWithUserData(leagueId)
     return Response.json(createApiResponse(true, members))
   } catch (error) {
     return handleApiError(error)
