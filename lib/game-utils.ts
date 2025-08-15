@@ -43,7 +43,7 @@ export function computeGameStatus(game: {
     return game.status || "not_started"
   }
   
-  const startTime = parseISO(gameStartTime)
+  const startTime = gameStartTime instanceof Date ? gameStartTime : parseISO(gameStartTime)
   const gameEndBuffer = addHours(startTime, 2.5)
   
   // Time-based status computation
