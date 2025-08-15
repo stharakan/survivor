@@ -131,12 +131,14 @@ async function findOverdueGames(): Promise<any[]> {
         { status: 'not_started' },
         // Exclude EPL 2024/2025 season games
         {
-          $not: {
-            $and: [
-              { sportsLeague: 'EPL' },
-              { season: '2024/2025' }
-            ]
-          }
+          $nor: [
+            {
+              $and: [
+                { sportsLeague: 'EPL' },
+                { season: '2024/2025' }
+              ]
+            }
+          ]
         }
       ]
     })
