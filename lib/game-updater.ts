@@ -128,12 +128,21 @@ async function findOverdueGames(): Promise<any[]> {
             { date: { $lt: now } }
           ]
         },
-        { status: 'not_started' }
+        { status: 'not_started' },
+        // Exclude EPL 2024/2025 season games
+        {
+          $not: {
+            $and: [
+              { sportsLeague: 'EPL' },
+              { season: '2024/2025' }
+            ]
+          }
+        }
       ]
     })
     .toArray()
   
-  logWithTimestamp(`Found ${overdueGames.length} overdue games`)
+  logWithTimestamp(`Found ${overdueGames.length} overdue games (excluding EPL 2024/2025 season)`)
   return overdueGames
 }
 
@@ -229,6 +238,99 @@ async function checkAndTriggerScoring(gamesMovedToCompleted: any[]): Promise<num
   }
 }
 
+// Calculate current game week (latest week with started or completed games)
+async function calculateCurrentGameWeek(sportsLeague: string, season: string): Promise<number | null> {
+  const db = await getDatabase()
+  
+  const result = await db.collection(Collections.GAMES)
+    .aggregate([
+      {
+        $match: {
+          sportsLeague,
+          season,
+          status: { $in: ['in_progress', 'completed'] }
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          maxWeek: { $max: '$week' }
+        }
+      }
+    ])
+    .toArray()
+  
+  return result.length > 0 ? result[0].maxWeek : null
+}
+
+// Calculate current pick week (earliest week with games not yet started)
+async function calculateCurrentPickWeek(sportsLeague: string, season: string): Promise<number | null> {
+  const db = await getDatabase()
+  
+  const result = await db.collection(Collections.GAMES)
+    .aggregate([
+      {
+        $match: {
+          sportsLeague,
+          season,
+          status: 'not_started'
+        }
+      },
+      {
+        $group: {
+          _id: null,
+          minWeek: { $min: '$week' }
+        }
+      }
+    ])
+    .toArray()
+  
+  return result.length > 0 ? result[0].minWeek : null
+}
+
+// Update league week tracking for all leagues
+async function updateLeagueWeekTracking(): Promise<number> {
+  const db = await getDatabase()
+  
+  logWithTimestamp('Updating league week tracking...')
+  
+  // Get all active leagues
+  const leagues = await db.collection(Collections.LEAGUES)
+    .find({ isActive: true })
+    .toArray()
+  
+  let leaguesUpdated = 0
+  
+  for (const league of leagues) {
+    try {
+      // Calculate weeks for this league
+      const currentGameWeek = await calculateCurrentGameWeek(league.sportsLeague, league.season)
+      const currentPickWeek = await calculateCurrentPickWeek(league.sportsLeague, league.season)
+      
+      // Update league document
+      await db.collection(Collections.LEAGUES).updateOne(
+        { _id: league._id },
+        {
+          $set: {
+            current_game_week: currentGameWeek,
+            current_pick_week: currentPickWeek,
+            lastWeekUpdate: new Date()
+          }
+        }
+      )
+      
+      leaguesUpdated++
+      logWithTimestamp(`Updated league ${league.name}: game_week=${currentGameWeek}, pick_week=${currentPickWeek}`)
+      
+    } catch (error) {
+      logWithTimestamp(`Error updating week tracking for league ${league.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+  
+  logWithTimestamp(`League week tracking completed: ${leaguesUpdated} leagues updated`)
+  return leaguesUpdated
+}
+
 // Main hybrid game update function
 export async function updateGameScores(): Promise<{
   bulkGamesProcessed: number
@@ -236,6 +338,7 @@ export async function updateGameScores(): Promise<{
   individualApiCalls: number
   gamesUpdated: number
   gamesCompletedWithPicks: number
+  leaguesUpdated: number
   executionTime: number
   completedAt: string
 }> {
@@ -327,6 +430,9 @@ export async function updateGameScores(): Promise<{
     // Step 5: Trigger scoring if games completed with user picks
     const picksUpdated = await checkAndTriggerScoring(gamesMovedToCompleted)
     
+    // Step 6: Update league week tracking
+    const leaguesUpdated = await updateLeagueWeekTracking()
+    
     const endTime = new Date()
     const executionTime = Math.round((endTime.getTime() - startTime.getTime()) / 1000)
     
@@ -338,6 +444,7 @@ export async function updateGameScores(): Promise<{
     logWithTimestamp(`  • ${gamesUpdated} games updated in database`)
     logWithTimestamp(`  • ${gamesMovedToCompleted.length} games moved to completed status`)
     logWithTimestamp(`  • ${picksUpdated} user picks affected by completed games`)
+    logWithTimestamp(`  • ${leaguesUpdated} leagues updated with week tracking`)
     logWithTimestamp(`  • Total execution time: ${executionTime} seconds`)
     logWithTimestamp(`  • Completed at: ${endTime.toISOString()}`)
     
@@ -347,6 +454,7 @@ export async function updateGameScores(): Promise<{
       individualApiCalls,
       gamesUpdated,
       gamesCompletedWithPicks: picksUpdated,
+      leaguesUpdated,
       executionTime,
       completedAt: endTime.toISOString()
     }
