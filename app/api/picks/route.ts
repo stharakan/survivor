@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPick, getUserPicksByLeague } from '@/lib/db'
+import { createPick, getUserPicksByLeague, getGameTimeInfoById } from '@/lib/db'
 import type { ApiResponse } from '@/lib/api-types'
 import { ObjectId } from 'mongodb'
+import { canPickFromGame } from '@/lib/game-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,6 +57,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: false,
         error: 'Invalid league ID format',
+      } as ApiResponse<never>, { status: 400 })
+    }
+    
+    // Fetch game time information for validation
+    const gameTimeInfo = await getGameTimeInfoById(gameId)
+    if (!gameTimeInfo) {
+      return NextResponse.json({
+        success: false,
+        error: 'Game not found',
+      } as ApiResponse<never>, { status: 404 })
+    }
+    
+    // Perform time-based validation using real-time clock comparison
+    if (!canPickFromGame(gameTimeInfo)) {
+      return NextResponse.json({
+        success: false,
+        error: 'Pick failed because game has already started',
       } as ApiResponse<never>, { status: 400 })
     }
     

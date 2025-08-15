@@ -821,6 +821,23 @@ export async function getUserPicksByLeague(userId: string, leagueId: string): Pr
   })) as Pick[]
 }
 
+export async function getGameTimeInfoById(gameId: number): Promise<{ startTime?: string; date?: string; status?: GameStatus } | null> {
+  const db = await getDatabase()
+  
+  const game = await db.collection(Collections.GAMES).findOne(
+    { id: gameId },
+    { projection: { startTime: 1, date: 1, status: 1 } }
+  )
+  
+  if (!game) return null
+  
+  return {
+    startTime: game.startTime,
+    date: game.date,
+    status: game.status
+  }
+}
+
 // Get all teams
 export async function getAllTeams(): Promise<Team[]> {
   const db = await getDatabase()

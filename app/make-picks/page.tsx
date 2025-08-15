@@ -131,7 +131,8 @@ function MakePicksContent() {
       setPicksRemaining(remainingData)
     } catch (error) {
       console.error("Error submitting pick:", error)
-      setError("Failed to submit pick. Please try again.")
+      const errorMessage = error instanceof Error ? error.message : "Failed to submit pick. Please try again."
+      setError(errorMessage)
     } finally {
       setSubmitting(false)
     }

@@ -16,6 +16,9 @@ Script for initializing the database with sample data for testing purposes.
 ### 4. EPL League Creation (`create-epl-league.ts`)
 Script for creating an EPL 2025/2026 survivor league with designated admin user.
 
+### 5. Game Score Update (`update-game-scores.js`)
+HTTP client script that triggers automated game status and score updates using hybrid approach with Football Data API.
+
 ## Features
 
 - ✅ Calls scoring calculation API endpoint remotely
@@ -486,3 +489,32 @@ The script will:
 - **Node.js**: >=18.0.0
 - **TypeScript**: For script execution (npx tsx)
 - **MongoDB**: Database connection
+
+---
+
+# Game Score Update Script
+
+Updates game statuses and scores from Football Data API using hybrid approach.
+
+## Features
+
+- ✅ Fetches game updates from Football Data API (today → +1 week)
+- ✅ Detects overdue games missed by time-window queries
+- ✅ Smart individual API calls only when needed
+- ✅ Triggers score recalculation for completed games with picks
+- ✅ Rate limiting compliant (10 requests/minute)
+- ✅ Cron job compatible
+
+## Usage
+
+```bash
+export SCORING_API_KEY="your-api-key"
+export FOOTBALLDATA_API_KEY="your-football-data-key"
+node update-game-scores.js
+```
+
+## Cron Setup (Every 3 hours)
+
+```bash
+0 */3 * * * cd /path/to/script && SCORING_API_KEY="key" FOOTBALLDATA_API_KEY="key" node update-game-scores.js >> /var/log/game-updates.log 2>&1
+```
