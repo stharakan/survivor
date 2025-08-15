@@ -58,6 +58,7 @@ export const makePickSchema = z.object({
 export const updateMemberSchema = z.object({
   isPaid: z.boolean().optional(),
   isAdmin: z.boolean().optional(),
+  teamName: z.string().min(1, 'Team name cannot be empty').max(100, 'Team name must be 100 characters or less').optional(),
 })
 
 // Scoring calculation response schema
