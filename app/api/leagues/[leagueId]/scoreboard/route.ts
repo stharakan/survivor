@@ -6,10 +6,11 @@ import type { Player } from '@/types/player'
 // GET /api/leagues/[leagueId]/scoreboard - Get league scoreboard
 export async function GET(
   request: NextRequest,
-  { params }: { params: { leagueId: string } }
+  { params }: { params: Promise<{ leagueId: string }> }
 ) {
   try {
-    const members = await getLeagueMembersWithUserData(params.leagueId)
+    const { leagueId } = await params
+    const members = await getLeagueMembersWithUserData(leagueId)
     
     // Convert memberships to player scoreboard format with "TeamName (Name)" format
     const players: Player[] = members
