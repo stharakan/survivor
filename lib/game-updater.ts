@@ -20,6 +20,39 @@ const API_BASE_URL = 'https://api.football-data.org/v4'
 const COMPETITION_CODE = 'PL' // Premier League
 const REQUEST_DELAY = 6000 // 6 seconds between requests for rate limiting
 
+// Map Football Data API season format to database season format
+function mapApiSeasonToDatabase(apiSeason: string, competitionType: string = "EPL"): string {
+  // Football Data API returns single year, database uses academic year format
+  if (competitionType === "EPL") {
+    const year = parseInt(apiSeason)
+    return `${year}/${year + 1}`  // "2025" → "2025/2026"
+  }
+  return apiSeason // Fallback for other leagues
+}
+
+
+// Simplified game matching - external ID only
+async function findMatchingDatabaseGame(apiGame: any, apiSeason: string): Promise<any | null> {
+  const db = await getDatabase()
+  
+  // Only try external ID matching - fail fast if not found
+  if (!apiGame.id) {
+    throw new Error(`CRITICAL: API game missing external ID - cannot process game: ${apiGame.homeTeam.shortName} vs ${apiGame.awayTeam.shortName} on ${apiGame.utcDate}`)
+  }
+  
+  const dbGame = await db.collection(Collections.GAMES).findOne({ 
+    externalId: apiGame.id.toString() 
+  })
+  
+  if (dbGame) {
+    logWithTimestamp(`Game matched by external ID: ${apiGame.id}`)
+    return dbGame
+  }
+  
+  // No external ID match found - this is now a critical error
+  throw new Error(`CRITICAL: No database game found with external ID ${apiGame.id} for API game: ${apiGame.homeTeam.shortName} vs ${apiGame.awayTeam.shortName} on ${apiGame.utcDate}. Run backfill script to add missing external IDs.`)
+}
+
 // Map Football Data API status to our internal status
 function mapApiStatusToInternal(apiStatus: string): GameStatus {
   switch (apiStatus) {
@@ -362,48 +395,18 @@ export async function updateGameScores(): Promise<{
     let gamesUpdated = 0
     const gamesMovedToCompleted: any[] = []
     
-    // Process bulk games first
+    // Process bulk games first with enhanced matching
     for (const apiGame of bulkGames) {
-      // Find matching database game
-      const db = await getDatabase()
-      let dbGame = null
+      // Extract season from API response (use current season as default)
+      const apiSeason = apiGame.season?.id ? '2025' : '2025' // Default to current season
       
-      // Try to find by external ID first
-      if (apiGame.id) {
-        dbGame = await db.collection(Collections.GAMES).findOne({ externalId: apiGame.id.toString() })
-      }
+      // findMatchingDatabaseGame now throws an error if no match is found
+      const dbGame = await findMatchingDatabaseGame(apiGame, apiSeason)
+      const statusChangedToCompleted = await updateGameInDatabase(dbGame, apiGame)
+      gamesUpdated++
       
-      // If not found by external ID, try to match by teams and date
-      if (!dbGame) {
-        const apiDate = new Date(apiGame.utcDate)
-        const apiDateStart = new Date(apiDate.getTime() - 24 * 60 * 60 * 1000) // 1 day before
-        const apiDateEnd = new Date(apiDate.getTime() + 24 * 60 * 60 * 1000)   // 1 day after
-        
-        dbGame = await db.collection(Collections.GAMES).findOne({
-          $and: [
-            {
-              $or: [
-                { startTime: { $gte: apiDateStart, $lte: apiDateEnd } },
-                { date: { $gte: apiDateStart, $lte: apiDateEnd } }
-              ]
-            },
-            {
-              $or: [
-                { 'homeTeam.name': { $in: [apiGame.homeTeam.name, apiGame.homeTeam.shortName] } },
-                { 'awayTeam.name': { $in: [apiGame.awayTeam.name, apiGame.awayTeam.shortName] } }
-              ]
-            }
-          ]
-        })
-      }
-      
-      if (dbGame) {
-        const statusChangedToCompleted = await updateGameInDatabase(dbGame, apiGame)
-        gamesUpdated++
-        
-        if (statusChangedToCompleted) {
-          gamesMovedToCompleted.push(dbGame)
-        }
+      if (statusChangedToCompleted) {
+        gamesMovedToCompleted.push(dbGame)
       }
     }
     
