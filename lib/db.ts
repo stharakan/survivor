@@ -1018,6 +1018,114 @@ export async function createGameIndexes() {
   console.log('✓ Game indexes created')
 }
 
+// Get scoreboard data with weekly picks
+export async function getScoreboardWithPicks(leagueId: string): Promise<{
+  players: Player[]
+  currentGameWeek: number | null
+}> {
+  const db = await getDatabase()
+  
+  // Get league info including current game week
+  const league = await db.collection(Collections.LEAGUES).findOne({ 
+    _id: new ObjectId(leagueId) 
+  })
+  
+  const currentGameWeek = league?.current_game_week || null
+  
+  // Get league members with user data
+  const members = await getLeagueMembersWithUserData(leagueId)
+  
+  // If no current game week, return basic player data
+  if (!currentGameWeek) {
+    const players: Player[] = members
+      .filter(member => member.status === 'active')
+      .map(member => {
+        const displayName = member.userDetails.name 
+          ? `${member.teamName} (${member.userDetails.name})`
+          : member.teamName
+        
+        return {
+          id: parseInt(member.user.toString()),
+          name: displayName,
+          points: member.points,
+          strikes: member.strikes,
+          rank: member.rank,
+          weeklyPick: undefined,
+        }
+      })
+      .sort((a, b) => {
+        if (a.points !== b.points) return b.points - a.points
+        return a.strikes - b.strikes
+      })
+      .map((player, index) => ({ ...player, rank: index + 1 }))
+    
+    return { players, currentGameWeek }
+  }
+  
+  // Get all picks for current week for all league members
+  const memberUserIds = members.map(m => new ObjectId(m.user.toString()))
+  
+  const weeklyPicks = await db.collection(Collections.PICKS)
+    .aggregate([
+      { 
+        $match: { 
+          userId: { $in: memberUserIds },
+          leagueId: new ObjectId(leagueId),
+          week: currentGameWeek
+        } 
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'teamId',
+          foreignField: 'id',
+          as: 'team'
+        }
+      },
+      { $unwind: '$team' },
+      {
+        $project: {
+          userId: 1,
+          teamName: '$team.name'
+        }
+      }
+    ]).toArray()
+  
+  // Create a map of user picks for quick lookup
+  const picksByUser = new Map<string, string>()
+  weeklyPicks.forEach(pick => {
+    picksByUser.set(pick.userId.toString(), pick.teamName)
+  })
+  
+  // Build player data with weekly picks
+  const players: Player[] = members
+    .filter(member => member.status === 'active')
+    .map(member => {
+      const displayName = member.userDetails.name 
+        ? `${member.teamName} (${member.userDetails.name})`
+        : member.teamName
+      
+      const userId = member.user.toString()
+      const weeklyPick = picksByUser.get(userId)
+      
+      return {
+        id: parseInt(userId),
+        name: displayName,
+        points: member.points,
+        strikes: member.strikes,
+        rank: member.rank,
+        weeklyPick,
+      }
+    })
+    .sort((a, b) => {
+      if (a.points !== b.points) return b.points - a.points
+      return a.strikes - b.strikes
+    })
+    .map((player, index) => ({ ...player, rank: index + 1 }))
+  
+  return { players, currentGameWeek }
+}
+
 // Initialize default data (teams, etc.)
 export async function initializeDefaultData() {
   const db = await getDatabase()

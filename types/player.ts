@@ -4,4 +4,5 @@ export type Player = {
   points: number
   strikes: number
   rank: number
+  weeklyPick?: string
 }

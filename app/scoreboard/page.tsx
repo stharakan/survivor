@@ -17,6 +17,7 @@ function ScoreboardContent() {
   const { user } = useAuth()
   const { currentLeague } = useLeague()
   const [players, setPlayers] = useState<Player[]>([])
+  const [currentGameWeek, setCurrentGameWeek] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -25,7 +26,8 @@ function ScoreboardContent() {
       if (user && currentLeague) {
         try {
           const data = await getScoreboard(currentLeague.id)
-          setPlayers(data)
+          setPlayers(data.players)
+          setCurrentGameWeek(data.currentGameWeek)
         } catch (error) {
           console.error("Error fetching scoreboard data:", error)
         } finally {
@@ -75,6 +77,9 @@ function ScoreboardContent() {
                 <TableRow className="border-b-2 border-black">
                   <TableHead className="w-16 font-heading">Rank</TableHead>
                   <TableHead className="font-heading">Player</TableHead>
+                  <TableHead className="font-heading">
+                    {currentGameWeek ? `Week ${currentGameWeek} pick` : 'Weekly pick'}
+                  </TableHead>
                   <TableHead className="text-right font-heading">Points</TableHead>
                   <TableHead className="text-right font-heading">Strikes</TableHead>
                 </TableRow>
@@ -93,6 +98,7 @@ function ScoreboardContent() {
                       </div>
                     </TableCell>
                     <TableCell>{player.name}</TableCell>
+                    <TableCell>{player.weeklyPick || '??'}</TableCell>
                     <TableCell className="text-right">{player.points}</TableCell>
                     <TableCell className="text-right">{player.strikes}</TableCell>
                   </TableRow>

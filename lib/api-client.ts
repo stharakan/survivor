@@ -106,7 +106,10 @@ export async function getLeagueMembers(leagueId: number | string): Promise<Leagu
   return apiRequest(`/leagues/${leagueId}/members`)
 }
 
-export async function getScoreboard(leagueId: number): Promise<Player[]> {
+export async function getScoreboard(leagueId: number): Promise<{
+  players: Player[]
+  currentGameWeek: number | null
+}> {
   return apiRequest(`/leagues/${leagueId}/scoreboard`)
 }
 
