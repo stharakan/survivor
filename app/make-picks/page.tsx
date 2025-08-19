@@ -34,7 +34,7 @@ function MakePicksContent() {
   const [submitting, setSubmitting] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [currentWeek, setCurrentWeek] = useState(1) // Default to week 1
+  const [currentWeek, setCurrentWeek] = useState(currentLeague?.current_pick_week || 1)
   const [picksRemaining, setPicksRemaining] = useState<{ team: Team; remaining: number }[]>([])
   const [loadingPicksRemaining, setLoadingPicksRemaining] = useState(true)
   const [userPickForWeek, setUserPickForWeek] = useState<number | null>(null)

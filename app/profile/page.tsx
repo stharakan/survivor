@@ -279,11 +279,11 @@ function ProfileContent() {
 
               <div className="mt-4 border-2 border-black p-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Season Progress</p>
-                  <p className="text-sm font-medium">{picks.length} / 38 weeks</p>
+                  <p className="text-sm font-medium">Weeks Completed</p>
+                  <p className="text-sm font-medium">{currentLeague?.last_completed_week || 0} / 38 weeks</p>
                 </div>
                 <div className="w-full bg-gray-200 h-4 mt-2 border-2 border-black">
-                  <div className="bg-retro-orange h-full" style={{ width: `${(picks.length / 38) * 100}%` }}></div>
+                  <div className="bg-retro-orange h-full" style={{ width: `${((currentLeague?.last_completed_week || 0) / 38) * 100}%` }}></div>
                 </div>
               </div>
             </div>

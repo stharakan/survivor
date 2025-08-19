@@ -17,7 +17,7 @@ function ScoreboardContent() {
   const { user } = useAuth()
   const { currentLeague } = useLeague()
   const [players, setPlayers] = useState<Player[]>([])
-  const [currentGameWeek, setCurrentGameWeek] = useState<number | null>(null)
+  const [displayWeek, setDisplayWeek] = useState<number>(1)
   const [loading, setLoading] = useState(true)
   const router = useRouter()
 
@@ -27,7 +27,7 @@ function ScoreboardContent() {
         try {
           const data = await getScoreboard(currentLeague.id)
           setPlayers(data.players)
-          setCurrentGameWeek(data.currentGameWeek)
+          setDisplayWeek(currentLeague.current_pick_week || 1)
         } catch (error) {
           console.error("Error fetching scoreboard data:", error)
         } finally {
@@ -41,6 +41,14 @@ function ScoreboardContent() {
 
   const handleRowClick = (playerId: number) => {
     router.push(`/player/${playerId}`)
+  }
+
+  const shouldShowWeekPickColumn = (weekNumber: number) => {
+    const gameWeek = currentLeague?.current_game_week || 0
+    const completedWeek = currentLeague?.last_completed_week || 0
+    
+    // Show if week has started but not fully completed
+    return weekNumber > completedWeek && weekNumber <= gameWeek
   }
 
   return (
@@ -77,9 +85,11 @@ function ScoreboardContent() {
                 <TableRow className="border-b-2 border-black">
                   <TableHead className="w-16 font-heading">Rank</TableHead>
                   <TableHead className="font-heading">Player</TableHead>
-                  <TableHead className="font-heading">
-                    {currentGameWeek ? `Week ${currentGameWeek} pick` : 'Weekly pick'}
-                  </TableHead>
+                  {shouldShowWeekPickColumn(displayWeek) && (
+                    <TableHead className="font-heading">
+                      Week {displayWeek} pick
+                    </TableHead>
+                  )}
                   <TableHead className="text-right font-heading">Points</TableHead>
                   <TableHead className="text-right font-heading">Strikes</TableHead>
                 </TableRow>
@@ -98,7 +108,9 @@ function ScoreboardContent() {
                       </div>
                     </TableCell>
                     <TableCell>{player.name}</TableCell>
-                    <TableCell>{player.weeklyPick || '??'}</TableCell>
+                    {shouldShowWeekPickColumn(displayWeek) && (
+                      <TableCell>{player.weeklyPick || '??'}</TableCell>
+                    )}
                     <TableCell className="text-right">{player.points}</TableCell>
                     <TableCell className="text-right">{player.strikes}</TableCell>
                   </TableRow>

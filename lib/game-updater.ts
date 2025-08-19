@@ -323,6 +323,40 @@ async function calculateCurrentPickWeek(sportsLeague: string, season: string): P
   return result.length > 0 ? result[0].minWeek : null
 }
 
+// Calculate last completed week (largest week for which all games are completed)
+async function calculateLastCompletedWeek(sportsLeague: string, season: string): Promise<number | null> {
+  const db = await getDatabase()
+  
+  const result = await db.collection(Collections.GAMES)
+    .aggregate([
+      {
+        $match: {
+          sportsLeague,
+          season
+        }
+      },
+      {
+        $group: {
+          _id: '$week',
+          completedCount: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          totalCount: { $sum: 1 }
+        }
+      },
+      {
+        $match: { $expr: { $eq: ['$completedCount', '$totalCount'] } }
+      },
+      {
+        $group: {
+          _id: null,
+          maxCompletedWeek: { $max: '$_id' }
+        }
+      }
+    ])
+    .toArray()
+  
+  return result.length > 0 ? result[0].maxCompletedWeek : null
+}
+
 // Update league week tracking for all leagues
 async function updateLeagueWeekTracking(): Promise<number> {
   const db = await getDatabase()
@@ -341,6 +375,7 @@ async function updateLeagueWeekTracking(): Promise<number> {
       // Calculate weeks for this league
       const currentGameWeek = await calculateCurrentGameWeek(league.sportsLeague, league.season)
       const currentPickWeek = await calculateCurrentPickWeek(league.sportsLeague, league.season)
+      const lastCompletedWeek = await calculateLastCompletedWeek(league.sportsLeague, league.season)
       
       // Update league document
       await db.collection(Collections.LEAGUES).updateOne(
@@ -349,13 +384,14 @@ async function updateLeagueWeekTracking(): Promise<number> {
           $set: {
             current_game_week: currentGameWeek,
             current_pick_week: currentPickWeek,
+            last_completed_week: lastCompletedWeek,
             lastWeekUpdate: new Date()
           }
         }
       )
       
       leaguesUpdated++
-      logWithTimestamp(`Updated league ${league.name}: game_week=${currentGameWeek}, pick_week=${currentPickWeek}`)
+      logWithTimestamp(`Updated league ${league.name}: game_week=${currentGameWeek}, pick_week=${currentPickWeek}, last_completed_week=${lastCompletedWeek}`)
       
     } catch (error) {
       logWithTimestamp(`Error updating week tracking for league ${league.name}: ${error instanceof Error ? error.message : 'Unknown error'}`)

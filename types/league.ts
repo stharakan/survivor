@@ -11,6 +11,9 @@ export type League = {
   requiresApproval: boolean
   createdBy: number
   createdAt: string
+  current_game_week: number | null
+  current_pick_week: number | null
+  last_completed_week: number | null
 }
 
 export type LeagueMembership = {

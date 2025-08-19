@@ -129,6 +129,9 @@ export async function createLeague(
     isActive: true,
     memberCount: 0,
     createdAt: new Date().toISOString(),
+    current_game_week: null,
+    current_pick_week: null,
+    last_completed_week: null,
   } as League
 }
 
@@ -150,6 +153,9 @@ export async function getLeagueById(id: string): Promise<League | null> {
     isActive: league.isActive,
     memberCount: league.memberCount,
     createdAt: league.createdAt.toISOString(),
+    current_game_week: league.current_game_week || null,
+    current_pick_week: league.current_pick_week || null,
+    last_completed_week: league.last_completed_week || null,
   } as League
 }
 
@@ -219,6 +225,9 @@ export async function getAvailableLeagues(userId: string): Promise<League[]> {
     isActive: league.isActive,
     memberCount: league.memberCount,
     createdAt: league.createdAt.toISOString(),
+    current_game_week: league.current_game_week || null,
+    current_pick_week: league.current_pick_week || null,
+    last_completed_week: league.last_completed_week || null,
   })) as League[]
 }
 
@@ -300,6 +309,9 @@ export async function getUserLeagueMemberships(userId: string): Promise<LeagueMe
       isActive: membership.league.isActive,
       memberCount: membership.league.memberCount,
       createdAt: membership.league.createdAt.toISOString(),
+      current_game_week: membership.league.current_game_week || null,
+      current_pick_week: membership.league.current_pick_week || null,
+      last_completed_week: membership.league.last_completed_week || null,
     },
     user: membership.userId.toString(),
     teamName: membership.teamName,
@@ -345,6 +357,9 @@ export async function getLeagueMembers(leagueId: string): Promise<LeagueMembersh
       isActive: membership.league.isActive,
       memberCount: membership.league.memberCount,
       createdAt: membership.league.createdAt.toISOString(),
+      current_game_week: membership.league.current_game_week || null,
+      current_pick_week: membership.league.current_pick_week || null,
+      last_completed_week: membership.league.last_completed_week || null,
     },
     user: membership.userId.toString(),
     teamName: membership.teamName,
@@ -459,6 +474,9 @@ export async function getLeagueMember(leagueId: string, memberId: string): Promi
       isActive: membership.league.isActive,
       memberCount: membership.league.memberCount,
       createdAt: membership.league.createdAt.toISOString(),
+      current_game_week: membership.league.current_game_week || null,
+      current_pick_week: membership.league.current_pick_week || null,
+      last_completed_week: membership.league.last_completed_week || null,
     },
     user: membership.userId.toString(),
     teamName: membership.teamName,
