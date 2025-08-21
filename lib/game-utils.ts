@@ -116,6 +116,27 @@ export function getGameCardClasses(
 }
 
 /**
+ * Checks if a user can change their existing pick by verifying
+ * the original picked game hasn't started yet (based on game time, not status)
+ */
+export function canChangeExistingPick(existingPickGame: { 
+  startTime?: string; 
+  date?: string; 
+  status?: GameStatus; 
+  manualStatusOverride?: GameStatus 
+}): boolean {
+  const now = new Date()
+  const gameStartTime = existingPickGame.startTime || existingPickGame.date
+  
+  if (!gameStartTime) {
+    return true // If no time info, allow change
+  }
+  
+  const startTime = gameStartTime instanceof Date ? gameStartTime : parseISO(gameStartTime)
+  return now <= startTime // Can change if game hasn't started yet
+}
+
+/**
  * Gets the team selection styling classes based on game status and selection state
  */
 export function getTeamSelectionClasses(

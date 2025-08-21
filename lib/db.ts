@@ -900,6 +900,97 @@ export async function getGameTimeInfoById(gameId: number): Promise<{ startTime?:
   }
 }
 
+// Get a specific user pick for a given week
+export async function getUserPickForWeek(userId: string, leagueId: string, week: number): Promise<Pick | null> {
+  const db = await getDatabase()
+  
+  const pick = await db.collection(Collections.PICKS)
+    .aggregate([
+      { $match: { userId: new ObjectId(userId), leagueId: new ObjectId(leagueId), week } },
+      {
+        $lookup: {
+          from: Collections.GAMES,
+          localField: 'gameId',
+          foreignField: 'id',
+          as: 'game'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'teamId',
+          foreignField: 'id',
+          as: 'team'
+        }
+      },
+      { $unwind: '$game' },
+      { $unwind: '$team' },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'game.homeTeamId',
+          foreignField: 'id',
+          as: 'game.homeTeam'
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'game.awayTeamId',
+          foreignField: 'id',
+          as: 'game.awayTeam'
+        }
+      },
+      { $unwind: '$game.homeTeam' },
+      { $unwind: '$game.awayTeam' },
+      { $limit: 1 }
+    ])
+    .toArray()
+
+  if (pick.length === 0) {
+    return null
+  }
+
+  const pickData = pick[0]
+  const { result } = pickData
+
+  return {
+    id: pickData._id.toString(),
+    user: userId,
+    game: {
+      id: pickData.game.id,
+      week: pickData.game.week,
+      homeTeam: {
+        id: pickData.game.homeTeam.id,
+        name: pickData.game.homeTeam.name,
+        abbreviation: pickData.game.homeTeam.abbreviation,
+        logo: pickData.game.homeTeam.logo,
+      },
+      awayTeam: {
+        id: pickData.game.awayTeam.id,
+        name: pickData.game.awayTeam.name,
+        abbreviation: pickData.game.awayTeam.abbreviation,
+        logo: pickData.game.awayTeam.logo,
+      },
+      homeScore: pickData.game.homeScore,
+      awayScore: pickData.game.awayScore,
+      status: pickData.game.status,
+      date: pickData.game.date,
+      startTime: pickData.game.startTime,
+      sportsLeague: pickData.game.sportsLeague,
+      season: pickData.game.season,
+    },
+    team: {
+      id: pickData.team.id,
+      name: pickData.team.name,
+      abbreviation: pickData.team.abbreviation,
+      logo: pickData.team.logo,
+    },
+    result,
+    week: pickData.week,
+  } as Pick
+}
+
 // Get all teams
 export async function getAllTeams(): Promise<Team[]> {
   const db = await getDatabase()

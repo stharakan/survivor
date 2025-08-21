@@ -15,6 +15,7 @@ import { BatteryIndicator } from "@/components/ui/battery-indicator"
 import { 
   computeGameStatus,
   canPickFromGame,
+  canChangeExistingPick,
   getGameStatusDisplay,
   getGameCardClasses,
   getTeamSelectionClasses
@@ -85,6 +86,18 @@ function MakePicksContent() {
   }, [user, currentLeague, currentWeek])
 
   const handleTeamSelect = (gameId: number, teamId: number) => {
+    // Check if user has existing pick and if it can be changed
+    if (userPickForWeek) {
+      const existingGame = games.find(g => g.userPick?.user === user?.id)
+      if (existingGame && !canChangeExistingPick(existingGame)) {
+        setError("Cannot change pick because your selected game has already started")
+        return
+      }
+    }
+    
+    // Clear any previous errors
+    setError(null)
+    
     // In survivor league, you can only pick one team per week
     // Replace any previous selection with the new one
     setSelectedTeam(teamId)
@@ -93,6 +106,15 @@ function MakePicksContent() {
 
   const handleSubmitPick = async () => {
     if (!user || !currentLeague || !selectedTeam || !selectedGameId) return
+
+    // Additional validation before submit
+    if (userPickForWeek) {
+      const existingGame = games.find(g => g.userPick?.user === user?.id)
+      if (existingGame && !canChangeExistingPick(existingGame)) {
+        setError("Cannot change pick because your selected game has already started")
+        return
+      }
+    }
 
     setSubmitting(true)
     setSuccess(null)

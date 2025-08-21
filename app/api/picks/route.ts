@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createPick, getUserPicksByLeague, getGameTimeInfoById } from '@/lib/db'
+import { createPick, getUserPicksByLeague, getGameTimeInfoById, getUserPickForWeek } from '@/lib/db'
 import type { ApiResponse } from '@/lib/api-types'
 import { ObjectId } from 'mongodb'
-import { canPickFromGame } from '@/lib/game-utils'
+import { canPickFromGame, canChangeExistingPick } from '@/lib/game-utils'
 
 export async function GET(request: NextRequest) {
   try {
@@ -69,6 +69,17 @@ export async function POST(request: NextRequest) {
       } as ApiResponse<never>, { status: 404 })
     }
     
+    // Check if user is trying to change an existing pick
+    const existingPick = await getUserPickForWeek(userId, leagueId, week)
+    if (existingPick) {
+      if (!canChangeExistingPick(existingPick.game)) {
+        return NextResponse.json({
+          success: false,
+          error: 'Cannot change pick because your selected game has already started',
+        } as ApiResponse<never>, { status: 400 })
+      }
+    }
+
     // Perform time-based validation using real-time clock comparison
     if (!canPickFromGame(gameTimeInfo)) {
       return NextResponse.json({
