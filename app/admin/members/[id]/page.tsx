@@ -16,7 +16,7 @@ import { ArrowLeft, UserX, AlertTriangle, CheckCircle, XCircle, KeyRound } from 
 import { useParams, useRouter } from "next/navigation"
 import Image from "next/image"
 import { AdminGuard } from "@/components/admin-guard"
-import { PasswordResetDialog } from "@/components/password-reset-dialog"
+import { PasswordResetLinkDialog } from "@/components/password-reset-link-dialog"
 
 function MemberManagementContent() {
   const { user } = useAuth()
@@ -25,7 +25,7 @@ function MemberManagementContent() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
-  const [showPasswordReset, setShowPasswordReset] = useState(false)
+  const [showPasswordResetLink, setShowPasswordResetLink] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const params = useParams()
@@ -277,11 +277,11 @@ function MemberManagementContent() {
                 <Button
                   variant="outline"
                   className="w-full border-2 border-black"
-                  onClick={() => setShowPasswordReset(true)}
+                  onClick={() => setShowPasswordResetLink(true)}
                   disabled={updating}
                 >
                   <KeyRound className="h-4 w-4 mr-2" />
-                  Reset Password
+                  Generate Reset Link
                 </Button>
               </div>
 
@@ -337,11 +337,11 @@ function MemberManagementContent() {
         </Card>
       </div>
 
-      {/* Password Reset Dialog */}
+      {/* Password Reset Link Dialog */}
       {member && currentLeague && (
-        <PasswordResetDialog
-          open={showPasswordReset}
-          onOpenChange={setShowPasswordReset}
+        <PasswordResetLinkDialog
+          open={showPasswordResetLink}
+          onOpenChange={setShowPasswordResetLink}
           userId={member.user}
           userTeamName={member.teamName}
           leagueId={currentLeague.id}

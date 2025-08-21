@@ -54,4 +54,5 @@ export const Collections = {
   PICKS: 'picks',
   JOIN_REQUESTS: 'join_requests',
   LEAGUE_INVITATIONS: 'league_invitations',
+  PASSWORD_RESET_TOKENS: 'password_reset_tokens',
 } as const

@@ -277,29 +277,14 @@ export async function revokeInvitation(invitationId: string): Promise<void> {
   })
 }
 
-// Admin password reset API function
-export async function resetUserPassword(
+// Generate password reset link API function
+export async function generatePasswordResetLink(
   userId: string, 
   leagueId: string
-): Promise<{ temporaryPassword: string; userEmail: string }> {
-  return apiRequest(`/admin/users/${userId}/reset-password`, {
+): Promise<{ resetLink: string; userEmail: string; expiresAt: string }> {
+  return apiRequest(`/admin/users/${userId}/generate-reset-link`, {
     method: 'POST',
     body: JSON.stringify({ leagueId }),
   })
 }
 
-// User password change API function
-export async function changeUserPassword(
-  currentPassword: string,
-  newPassword: string,
-  confirmPassword: string
-): Promise<{ message: string }> {
-  return apiRequest('/auth/change-password', {
-    method: 'POST',
-    body: JSON.stringify({ 
-      currentPassword, 
-      newPassword, 
-      confirmPassword 
-    }),
-  })
-}

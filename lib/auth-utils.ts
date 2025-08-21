@@ -4,7 +4,6 @@ import { NextRequest } from 'next/server'
 import type { User } from '@/types/user'
 import type { LeagueMembership } from '@/types/league'
 import bcrypt from 'bcryptjs'
-import crypto from 'crypto'
 
 export type AuthUser = {
   userId: string
@@ -232,72 +231,3 @@ export async function authorizeRequest(
   return authContext
 }
 
-/**
- * Generate secure temporary password and update user account
- */
-export async function resetUserPassword(userId: string): Promise<string> {
-  // Generate a secure temporary password (12 characters, alphanumeric)
-  const tempPassword = crypto.randomBytes(9).toString('base64').slice(0, 12)
-  
-  // Hash the temporary password
-  const hashedPassword = await bcrypt.hash(tempPassword, 12)
-  
-  // Update user's password in database
-  const { getDatabase, Collections } = await import('./mongodb')
-  const { ObjectId } = await import('mongodb')
-  const db = await getDatabase()
-  
-  const result = await db.collection(Collections.USERS).updateOne(
-    { _id: new ObjectId(userId) },
-    { 
-      $set: { 
-        password: hashedPassword,
-        passwordResetAt: new Date()
-      } 
-    }
-  )
-  
-  if (result.matchedCount === 0) {
-    throw new Error('User not found')
-  }
-  
-  if (result.modifiedCount === 0) {
-    throw new Error('Failed to update password')
-  }
-  
-  return tempPassword
-}
-
-/**
- * Log password reset actions for audit trail
- */
-export async function logPasswordResetAction(
-  adminUserId: string,
-  targetUserId: string,
-  leagueId: string,
-  action: string,
-  additionalContext?: Record<string, any>
-): Promise<void> {
-  const logEntry = {
-    timestamp: new Date().toISOString(),
-    action,
-    adminUserId,
-    targetUserId,
-    leagueId,
-    context: additionalContext
-  }
-  
-  // Log to console for debugging
-  console.log('PASSWORD RESET AUDIT LOG:', JSON.stringify(logEntry, null, 2))
-  
-  try {
-    const { getDatabase } = await import('./mongodb')
-    const db = await getDatabase()
-    
-    // Store in audit logs collection
-    await db.collection('audit_logs').insertOne(logEntry)
-  } catch (error) {
-    console.error('Failed to store password reset audit log:', error)
-    // Don't throw - audit logging failure shouldn't break the main operation
-  }
-}
