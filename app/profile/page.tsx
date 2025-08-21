@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getProfile, getUserPicks, updateUserProfile, updateMemberStatus } from "@/lib/api"
+import { getProfile, getUserPicks, updateUserProfile, updateMemberStatus, changeUserPassword } from "@/lib/api"
 import type { User } from "@/types/user"
 import type { Pick } from "@/types/pick"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { CheckCircle2, XCircle, MinusCircle, UserIcon, Shield, Edit3, Check, X } from "lucide-react"
+import { CheckCircle2, XCircle, MinusCircle, UserIcon, Shield, Edit3, Check, X, KeyRound, Eye, EyeOff } from "lucide-react"
 import { format } from "date-fns"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
@@ -28,6 +28,16 @@ function ProfileContent() {
   const [isEditingTeamName, setIsEditingTeamName] = useState(false)
   const [editingTeamName, setEditingTeamName] = useState("")
   const [savingTeamName, setSavingTeamName] = useState(false)
+  const [isChangingPassword, setIsChangingPassword] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState("")
+  const [newPassword, setNewPassword] = useState("")
+  const [confirmPassword, setConfirmPassword] = useState("")
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false)
+  const [showNewPassword, setShowNewPassword] = useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [changingPassword, setChangingPassword] = useState(false)
+  const [passwordSuccess, setPasswordSuccess] = useState("")
+  const [passwordError, setPasswordError] = useState("")
 
   useEffect(() => {
     const fetchData = async () => {
@@ -123,6 +133,62 @@ function ProfileContent() {
   const handleCancelTeamNameEdit = () => {
     setIsEditingTeamName(false)
     setEditingTeamName("")
+  }
+
+  const handleEditPassword = () => {
+    setIsChangingPassword(true)
+    setPasswordSuccess("")
+    setPasswordError("")
+  }
+
+  const handleSavePassword = async () => {
+    if (changingPassword) return
+    
+    // Basic validation
+    if (!currentPassword.trim()) {
+      setPasswordError("Current password is required")
+      return
+    }
+    if (!newPassword.trim()) {
+      setPasswordError("New password is required")
+      return
+    }
+    if (newPassword.length < 6) {
+      setPasswordError("New password must be at least 6 characters")
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New passwords don't match")
+      return
+    }
+    
+    setChangingPassword(true)
+    setPasswordError("")
+    
+    try {
+      await changeUserPassword(currentPassword, newPassword, confirmPassword)
+      setPasswordSuccess("Password changed successfully!")
+      setCurrentPassword("")
+      setNewPassword("")
+      setConfirmPassword("")
+      setIsChangingPassword(false)
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setPasswordSuccess(""), 3000)
+    } catch (error) {
+      setPasswordError(error instanceof Error ? error.message : "Failed to change password")
+    } finally {
+      setChangingPassword(false)
+    }
+  }
+
+  const handleCancelPasswordEdit = () => {
+    setIsChangingPassword(false)
+    setCurrentPassword("")
+    setNewPassword("")
+    setConfirmPassword("")
+    setPasswordError("")
+    setPasswordSuccess("")
   }
 
   if (loading) {
@@ -285,6 +351,155 @@ function ProfileContent() {
                 <div className="w-full bg-gray-200 h-4 mt-2 border-2 border-black">
                   <div className="bg-retro-orange h-full" style={{ width: `${((currentLeague?.last_completed_week || 0) / 38) * 100}%` }}></div>
                 </div>
+              </div>
+
+              {/* Password Change Section */}
+              <div className="border-t-2 border-black pt-4 mt-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="bg-retro-blue p-3 rounded-none border-2 border-black">
+                    <KeyRound className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-muted-foreground">Security</p>
+                    <p className="text-lg font-bold">Change Password</p>
+                  </div>
+                  {!isChangingPassword && (
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      onClick={handleEditPassword}
+                      className="border-2 border-black"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+
+                {isChangingPassword && (
+                  <div className="space-y-3">
+                    {/* Current Password */}
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Current Password</label>
+                      <div className="relative">
+                        <Input
+                          type={showCurrentPassword ? "text" : "password"}
+                          value={currentPassword}
+                          onChange={(e) => setCurrentPassword(e.target.value)}
+                          placeholder="Enter current password"
+                          className="border-2 border-black pr-10"
+                          disabled={changingPassword}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1 h-7 w-7"
+                          onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                          disabled={changingPassword}
+                        >
+                          {showCurrentPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* New Password */}
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">New Password</label>
+                      <div className="relative">
+                        <Input
+                          type={showNewPassword ? "text" : "password"}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Enter new password (min 6 characters)"
+                          className="border-2 border-black pr-10"
+                          disabled={changingPassword}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1 h-7 w-7"
+                          onClick={() => setShowNewPassword(!showNewPassword)}
+                          disabled={changingPassword}
+                        >
+                          {showNewPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Confirm Password */}
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Confirm New Password</label>
+                      <div className="relative">
+                        <Input
+                          type={showConfirmPassword ? "text" : "password"}
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder="Confirm new password"
+                          className="border-2 border-black pr-10"
+                          disabled={changingPassword}
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="absolute right-1 top-1 h-7 w-7"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          disabled={changingPassword}
+                        >
+                          {showConfirmPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+
+                    {/* Error/Success Messages */}
+                    {passwordError && (
+                      <div className="text-sm text-red-600 bg-red-50 border border-red-200 p-2 rounded">
+                        {passwordError}
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm" 
+                        variant="pixel" 
+                        onClick={handleSavePassword}
+                        disabled={changingPassword}
+                        className="flex-1"
+                      >
+                        {changingPassword ? "Changing..." : "Change Password"}
+                      </Button>
+                      <Button 
+                        size="sm" 
+                        variant="outline" 
+                        onClick={handleCancelPasswordEdit}
+                        disabled={changingPassword}
+                        className="border-2 border-black flex-1"
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {passwordSuccess && (
+                  <div className="text-sm text-green-600 bg-green-50 border border-green-200 p-2 rounded mt-2">
+                    {passwordSuccess}
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>

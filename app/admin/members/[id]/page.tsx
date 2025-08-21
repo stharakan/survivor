@@ -12,10 +12,11 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
-import { ArrowLeft, UserX, AlertTriangle, CheckCircle, XCircle } from "lucide-react"
+import { ArrowLeft, UserX, AlertTriangle, CheckCircle, XCircle, KeyRound } from "lucide-react"
 import { useParams, useRouter } from "next/navigation"
 import Image from "next/image"
 import { AdminGuard } from "@/components/admin-guard"
+import { PasswordResetDialog } from "@/components/password-reset-dialog"
 
 function MemberManagementContent() {
   const { user } = useAuth()
@@ -24,6 +25,7 @@ function MemberManagementContent() {
   const [loading, setLoading] = useState(true)
   const [updating, setUpdating] = useState(false)
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false)
+  const [showPasswordReset, setShowPasswordReset] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const params = useParams()
@@ -114,6 +116,16 @@ function MemberManagementContent() {
 
   const handleBackClick = () => {
     router.push("/admin")
+  }
+
+  const handlePasswordResetSuccess = (message: string) => {
+    setSuccess(message)
+    setTimeout(() => setSuccess(null), 5000)
+  }
+
+  const handlePasswordResetError = (errorMessage: string) => {
+    setError(errorMessage)
+    setTimeout(() => setError(null), 5000)
   }
 
   if (loading) {
@@ -255,6 +267,24 @@ function MemberManagementContent() {
                 />
               </div>
 
+              {/* Password Reset */}
+              <div className="border-t-2 border-black pt-6">
+                <div className="mb-4">
+                  <Label className="text-sm font-medium">Password Reset</Label>
+                  <div className="text-xs text-muted-foreground">Generate a temporary password for this member</div>
+                </div>
+                
+                <Button
+                  variant="outline"
+                  className="w-full border-2 border-black"
+                  onClick={() => setShowPasswordReset(true)}
+                  disabled={updating}
+                >
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Reset Password
+                </Button>
+              </div>
+
               {/* Remove Member */}
               <div className="border-t-2 border-black pt-6">
                 <div className="mb-4">
@@ -306,6 +336,19 @@ function MemberManagementContent() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Password Reset Dialog */}
+      {member && currentLeague && (
+        <PasswordResetDialog
+          open={showPasswordReset}
+          onOpenChange={setShowPasswordReset}
+          userId={member.user}
+          userTeamName={member.teamName}
+          leagueId={currentLeague.id}
+          onSuccess={handlePasswordResetSuccess}
+          onError={handlePasswordResetError}
+        />
+      )}
     </div>
   )
 }
