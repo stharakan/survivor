@@ -233,6 +233,7 @@ async function updateGameInDatabase(dbGame: any, apiGame: any): Promise<boolean>
       $set: {
         status: newStatus,
         startTime: newStartTime,
+        date: newStartTime, // Keep date field synchronized with startTime
         homeScore: newHomeScore,
         awayScore: newAwayScore,
         externalId: apiGame.id.toString(), // Store external ID for future individual lookups
