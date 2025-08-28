@@ -688,7 +688,7 @@ export async function getGamesByWeek(week: number, leagueId: string): Promise<Ga
     homeScore: game.homeScore,
     awayScore: game.awayScore,
     status: game.status,
-    date: game.date.toISOString(),
+    date: game.date instanceof Date ? game.date.toISOString() : game.date,
     sportsLeague: game.sportsLeague,
     season: game.season,
   })) as Game[]
@@ -792,7 +792,7 @@ export async function createPick(
       homeScore: game[0].homeScore,
       awayScore: game[0].awayScore,
       status: game[0].status,
-      date: game[0].date.toISOString(),
+      date: game[0].date instanceof Date ? game[0].date.toISOString() : game[0].date,
     },
     team: {
       id: team.id,
@@ -870,7 +870,7 @@ export async function getUserPicksByLeague(userId: string, leagueId: string): Pr
       homeScore: pick.game.homeScore,
       awayScore: pick.game.awayScore,
       status: pick.game.status,
-      date: pick.game.date.toISOString(),
+      date: pick.game.date instanceof Date ? pick.game.date.toISOString() : pick.game.date,
     },
     team: {
       id: pick.team.id,
@@ -1082,7 +1082,7 @@ export async function getGamesByWeekWithPicks(week: number, userId: string, leag
     homeScore: game.homeScore,
     awayScore: game.awayScore,
     status: game.status,
-    date: game.date.toISOString(),
+    date: game.date instanceof Date ? game.date.toISOString() : game.date,
     sportsLeague: game.sportsLeague,
     season: game.season,
     userPick: game.userPick.length > 0 ? {
