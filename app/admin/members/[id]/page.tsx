@@ -115,7 +115,7 @@ function MemberManagementContent() {
   }
 
   const handleBackClick = () => {
-    router.push("/admin")
+    router.push("/admin?tab=members")
   }
 
   const handlePasswordResetSuccess = (message: string) => {

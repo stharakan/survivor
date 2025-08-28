@@ -9,12 +9,17 @@ const Tabs = TabsPrimitive.Root
 
 const TabsList = React.forwardRef<
   React.ElementRef<typeof TabsPrimitive.List>,
-  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List>
->(({ className, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof TabsPrimitive.List> & {
+    orientation?: "horizontal" | "vertical"
+  }
+>(({ className, orientation = "horizontal", ...props }, ref) => (
   <TabsPrimitive.List
     ref={ref}
     className={cn(
-      "inline-flex h-10 items-center justify-center rounded-none bg-muted p-1 text-muted-foreground",
+      "inline-flex items-center justify-center rounded-none bg-muted p-1 text-muted-foreground border-4 border-black",
+      orientation === "horizontal" 
+        ? "h-10 flex-row" 
+        : "w-48 flex-col min-h-[200px] gap-0",
       className,
     )}
     {...props}
@@ -29,7 +34,10 @@ const TabsTrigger = React.forwardRef<
   <TabsPrimitive.Trigger
     ref={ref}
     className={cn(
-      "inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm border-2 border-transparent data-[state=active]:border-black",
+      "inline-flex items-center justify-center whitespace-nowrap rounded-none px-3 py-2 text-sm font-heading ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+      "w-full border-b-2 border-black last:border-b-0",
+      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-pixel",
+      "hover:bg-background/50",
       className,
     )}
     {...props}

@@ -92,7 +92,7 @@ function JoinRequestReviewContent() {
   }
 
   const handleBackClick = () => {
-    router.push("/admin")
+    router.push("/admin?tab=requests")
   }
 
   if (loading) {
