@@ -61,24 +61,6 @@ export default function Navbar() {
           <div onClick={handleLogoClick} className={user && currentLeague ? "cursor-pointer" : ""}>
             <div className="relative flex flex-col items-center">
               <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={50} height={50} />
-              <div className="text-center leading-tight">
-                {currentLeague ? (
-                  <div>
-                    <span className="font-heading text-[8px] text-white block">{currentLeague.name}</span>
-                    <div className="flex items-center justify-center gap-1">
-                      <span className="font-heading text-[6px] text-white/80 block">CLICK TO SWITCH</span>
-                      {isCurrentUserAdmin && (
-                        <span className="font-heading text-[6px] text-yellow-300 block">• ADMIN</span>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div>
-                    <span className="font-heading text-[10px] text-white block"></span>
-                    <span className="font-heading text-[8px] text-white block">SURVIVOR LEAGUE</span>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
 
