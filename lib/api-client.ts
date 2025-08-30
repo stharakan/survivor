@@ -180,9 +180,13 @@ export async function updateLeagueSettings(
     sportsLeague?: string
     isPublic?: boolean
     requiresApproval?: boolean
+    hideScoreboard?: boolean
   },
-): Promise<void> {
-  throw new Error('updateLeagueSettings not implemented yet')
+): Promise<League> {
+  return apiRequest(`/leagues/${leagueId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(updates),
+  })
 }
 
 export async function getUserPicks(userId: string, leagueId: number): Promise<Pick[]> {
@@ -240,7 +244,7 @@ export async function makePick(userId: string, gameId: number, teamId: number, l
   })
 }
 
-export async function getPlayerProfile(playerId: number, leagueId: number): Promise<Player | null> {
+export async function getPlayerProfile(playerId: string, leagueId: string): Promise<Player | null> {
   throw new Error('getPlayerProfile not implemented yet')
 }
 

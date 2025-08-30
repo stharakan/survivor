@@ -9,6 +9,7 @@ export type League = {
   memberCount: number
   isPublic: boolean
   requiresApproval: boolean
+  hideScoreboard: boolean
   createdBy: number
   createdAt: string
   current_game_week: number | null
@@ -17,9 +18,9 @@ export type League = {
 }
 
 export type LeagueMembership = {
-  id: number
+  id: string
   league: League
-  user: number
+  user: string
   teamName: string
   points: number
   strikes: number

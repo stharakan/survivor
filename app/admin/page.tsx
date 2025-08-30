@@ -81,6 +81,7 @@ function AdminPortalContent() {
     sportsLeague: "",
     isPublic: true,
     requiresApproval: false,
+    hideScoreboard: false,
   })
   const [saving, setSaving] = useState(false)
   
@@ -138,6 +139,7 @@ function AdminPortalContent() {
         sportsLeague: currentLeague.sportsLeague,
         isPublic: currentLeague.isPublic,
         requiresApproval: currentLeague.requiresApproval,
+        hideScoreboard: currentLeague.hideScoreboard || false,
       })
     }
   }, [currentLeague])
@@ -801,6 +803,20 @@ function AdminPortalContent() {
                           />
                         </div>
 
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <Label htmlFor="hide-scoreboard" className="text-sm font-medium">
+                              Hide Scoreboard
+                            </Label>
+                            <div className="text-xs text-muted-foreground">Hide the scoreboard from league members</div>
+                          </div>
+                          <Switch
+                            id="hide-scoreboard"
+                            checked={settingsFormData.hideScoreboard}
+                            onCheckedChange={(checked) => setSettingsFormData({ ...settingsFormData, hideScoreboard: checked })}
+                          />
+                        </div>
+
                         <div className="border-2 border-black p-3 bg-gray-50 dark:bg-gray-800">
                           <h4 className="font-medium mb-2">Privacy Settings Summary</h4>
                           <div className="text-sm space-y-1">
@@ -810,6 +826,9 @@ function AdminPortalContent() {
                             <div>
                               <strong>Join Process:</strong>{" "}
                               {settingsFormData.requiresApproval ? "Admin approval required" : "Instant join"}
+                            </div>
+                            <div>
+                              <strong>Scoreboard:</strong> {settingsFormData.hideScoreboard ? "Hidden from members" : "Visible to all"}
                             </div>
                           </div>
                         </div>

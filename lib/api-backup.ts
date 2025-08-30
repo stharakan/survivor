@@ -807,7 +807,7 @@ export async function makePick(userId: number, gameId: number, teamId: number, l
 }
 
 // Function to get a player's profile by ID (league-specific)
-export async function getPlayerProfile(playerId: number, leagueId: number): Promise<Player | null> {
+export async function getPlayerProfile(playerId: string, leagueId: string): Promise<Player | null> {
   const player = mockPlayers.find((p) => p.id === playerId)
   return player || null
 }

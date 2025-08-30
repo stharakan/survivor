@@ -3,7 +3,7 @@ import type { Team } from "./team"
 
 export type Pick = {
   id: string
-  user: number
+  user: string
   game: Game
   team: Team
   result: "win" | "loss" | null

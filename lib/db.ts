@@ -111,6 +111,7 @@ export async function createLeague(
     season,
     isPublic,
     requiresApproval,
+    hideScoreboard: false, // Default to false (visible)
     createdBy: new ObjectId(createdBy),
     isActive: true,
     memberCount: 0,
@@ -125,6 +126,7 @@ export async function createLeague(
     season,
     isPublic,
     requiresApproval,
+    hideScoreboard: false,
     createdBy: createdBy,
     isActive: true,
     memberCount: 0,
@@ -149,6 +151,7 @@ export async function getLeagueById(id: string): Promise<League | null> {
     season: league.season,
     isPublic: league.isPublic,
     requiresApproval: league.requiresApproval,
+    hideScoreboard: league.hideScoreboard || false,
     createdBy: league.createdBy.toString(),
     isActive: league.isActive,
     memberCount: league.memberCount,
@@ -156,6 +159,56 @@ export async function getLeagueById(id: string): Promise<League | null> {
     current_game_week: league.current_game_week || null,
     current_pick_week: league.current_pick_week || null,
     last_completed_week: league.last_completed_week || null,
+  } as League
+}
+
+export async function updateLeagueSettings(
+  leagueId: string,
+  updates: {
+    name?: string
+    description?: string
+    logo?: string
+    sportsLeague?: string
+    isPublic?: boolean
+    requiresApproval?: boolean
+    hideScoreboard?: boolean
+  }
+): Promise<League | null> {
+  const db = await getDatabase()
+  
+  const updateData: any = {}
+  if (updates.name !== undefined) updateData.name = updates.name
+  if (updates.description !== undefined) updateData.description = updates.description
+  if (updates.logo !== undefined) updateData.logo = updates.logo
+  if (updates.sportsLeague !== undefined) updateData.sportsLeague = updates.sportsLeague
+  if (updates.isPublic !== undefined) updateData.isPublic = updates.isPublic
+  if (updates.requiresApproval !== undefined) updateData.requiresApproval = updates.requiresApproval
+  if (updates.hideScoreboard !== undefined) updateData.hideScoreboard = updates.hideScoreboard
+  
+  const result = await db.collection(Collections.LEAGUES).findOneAndUpdate(
+    { _id: new ObjectId(leagueId) },
+    { $set: updateData },
+    { returnDocument: 'after' }
+  )
+  
+  if (!result) return null
+  
+  return {
+    id: result._id.toString(),
+    name: result.name,
+    description: result.description,
+    sportsLeague: result.sportsLeague,
+    season: result.season,
+    isPublic: result.isPublic,
+    requiresApproval: result.requiresApproval,
+    hideScoreboard: result.hideScoreboard || false,
+    createdBy: result.createdBy.toString(),
+    isActive: result.isActive,
+    memberCount: result.memberCount,
+    createdAt: result.createdAt.toISOString(),
+    current_game_week: result.current_game_week || null,
+    current_pick_week: result.current_pick_week || null,
+    last_completed_week: result.last_completed_week || null,
   } as League
 }
 
@@ -171,10 +224,14 @@ export async function getAllLeagues(): Promise<League[]> {
     season: league.season,
     isPublic: league.isPublic,
     requiresApproval: league.requiresApproval,
+    hideScoreboard: league.hideScoreboard || false,
     createdBy: league.createdBy.toString(),
     isActive: league.isActive,
     memberCount: league.memberCount,
     createdAt: league.createdAt.toISOString(),
+    current_game_week: league.current_game_week || null,
+    current_pick_week: league.current_pick_week || null,
+    last_completed_week: league.last_completed_week || null,
   })) as League[]
 }
 
@@ -221,6 +278,7 @@ export async function getAvailableLeagues(userId: string): Promise<League[]> {
     season: league.season,
     isPublic: league.isPublic,
     requiresApproval: league.requiresApproval,
+    hideScoreboard: league.hideScoreboard || false,
     createdBy: league.createdBy.toString(),
     isActive: league.isActive,
     memberCount: league.memberCount,
@@ -305,6 +363,7 @@ export async function getUserLeagueMemberships(userId: string): Promise<LeagueMe
       season: membership.league.season,
       isPublic: membership.league.isPublic,
       requiresApproval: membership.league.requiresApproval,
+      hideScoreboard: membership.league.hideScoreboard || false,
       createdBy: membership.league.createdBy.toString(),
       isActive: membership.league.isActive,
       memberCount: membership.league.memberCount,
@@ -353,6 +412,7 @@ export async function getLeagueMembers(leagueId: string): Promise<LeagueMembersh
       season: membership.league.season,
       isPublic: membership.league.isPublic,
       requiresApproval: membership.league.requiresApproval,
+      hideScoreboard: membership.league.hideScoreboard || false,
       createdBy: membership.league.createdBy.toString(),
       isActive: membership.league.isActive,
       memberCount: membership.league.memberCount,
@@ -470,6 +530,7 @@ export async function getLeagueMember(leagueId: string, memberId: string): Promi
       season: membership.league.season,
       isPublic: membership.league.isPublic,
       requiresApproval: membership.league.requiresApproval,
+      hideScoreboard: membership.league.hideScoreboard || false,
       createdBy: membership.league.createdBy.toString(),
       isActive: membership.league.isActive,
       memberCount: membership.league.memberCount,
@@ -773,7 +834,7 @@ export async function createPick(
   
   return {
     id: pickId,
-    user: parseInt(userId), // Note: This should be fixed to use proper user ID handling
+    user: userId,
     game: {
       id: game[0].id,
       week: game[0].week,
@@ -851,7 +912,7 @@ export async function getUserPicksByLeague(userId: string, leagueId: string): Pr
   
   return picks.map(pick => ({
     id: pick._id.toString(),
-    user: parseInt(pick.userId.toString()),
+    user: pick.userId.toString(),
     game: {
       id: pick.game.id,
       week: pick.game.week,
@@ -1154,7 +1215,7 @@ export async function getScoreboardWithPicks(leagueId: string): Promise<{
           : member.teamName
         
         return {
-          id: parseInt(member.user.toString()),
+          id: member.user.toString(),
           name: displayName,
           points: member.points,
           strikes: member.strikes,
@@ -1218,7 +1279,7 @@ export async function getScoreboardWithPicks(leagueId: string): Promise<{
       const weeklyPick = picksByUser.get(userId)
       
       return {
-        id: parseInt(userId),
+        id: userId,
         name: displayName,
         points: member.points,
         strikes: member.strikes,

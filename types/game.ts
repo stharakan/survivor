@@ -17,7 +17,7 @@ export type Game = {
   season: string // e.g., "2024/2025", "2025/2026"
   userPick?: {
     id: string
-    user: number
+    user: string
     team: Team
     result: "win" | "loss" | "draw" | null
     week: number

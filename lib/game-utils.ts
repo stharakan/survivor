@@ -142,10 +142,15 @@ export function canChangeExistingPick(existingPickGame: {
 export function getTeamSelectionClasses(
   game: { startTime?: string; date?: string; status?: GameStatus; manualStatusOverride?: GameStatus },
   isSelected: boolean = false,
-  isTeamUsed: boolean = false
+  isTeamUsed: boolean = false,
+  isPicksLocked: boolean = false
 ): string {
   const baseClasses = "flex flex-col items-center p-4 rounded-none border-2 transition-colors"
   const isDisabled = isGameDisabled(game)
+  
+  if (isPicksLocked) {
+    return `${baseClasses} border-gray-400 cursor-not-allowed bg-gray-100 dark:bg-gray-800 opacity-60`
+  }
   
   if (isDisabled) {
     return `${baseClasses} border-gray-300 cursor-not-allowed bg-gray-50 dark:bg-gray-900/20`
@@ -160,4 +165,42 @@ export function getTeamSelectionClasses(
   }
   
   return `${baseClasses} hover:bg-accent border-transparent cursor-pointer`
+}
+
+/**
+ * Checks if the gameweek has started by comparing current_pick_week with current_game_week
+ * Gameweek is considered "started" when current_pick_week === current_game_week
+ */
+export function hasGameweekStarted(league: { 
+  current_pick_week?: number | null; 
+  current_game_week?: number | null 
+}): boolean {
+  const pickWeek = league.current_pick_week || 0
+  const gameWeek = league.current_game_week || 0
+  
+  return pickWeek === gameWeek && pickWeek > 0
+}
+
+/**
+ * Determines if the user's picks are locked for the current week
+ * Picks are locked if the gameweek has started AND the user has an existing pick
+ */
+export function arePicksLocked(hasExistingPick: boolean, gameweekStarted: boolean): boolean {
+  return gameweekStarted && hasExistingPick
+}
+
+/**
+ * Determines if the user can make their first pick after gameweek has started
+ * This is only allowed if they have no existing pick and gameweek has started
+ */
+export function canMakeFirstPick(hasExistingPick: boolean, gameweekStarted: boolean): boolean {
+  return gameweekStarted && !hasExistingPick
+}
+
+/**
+ * Determines if pick changes should be completely disabled
+ * This happens when picks are locked (user has pick + gameweek started)
+ */
+export function shouldDisablePickChanges(hasExistingPick: boolean, gameweekStarted: boolean): boolean {
+  return arePicksLocked(hasExistingPick, gameweekStarted)
 }

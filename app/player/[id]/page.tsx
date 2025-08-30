@@ -24,7 +24,7 @@ function PlayerProfileContent() {
   const [loading, setLoading] = useState(true)
   const params = useParams()
   const router = useRouter()
-  const playerId = Number(params.id)
+  const playerId = params.id as string
 
   useEffect(() => {
     const fetchData = async () => {

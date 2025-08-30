@@ -18,7 +18,11 @@ import {
   canChangeExistingPick,
   getGameStatusDisplay,
   getGameCardClasses,
-  getTeamSelectionClasses
+  getTeamSelectionClasses,
+  hasGameweekStarted,
+  arePicksLocked,
+  canMakeFirstPick,
+  shouldDisablePickChanges
 } from "@/lib/game-utils"
 import type { GameStatus } from "@/types/game"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -40,6 +44,8 @@ function MakePicksContent() {
   const [loadingPicksRemaining, setLoadingPicksRemaining] = useState(true)
   const [userPickForWeek, setUserPickForWeek] = useState<number | null>(null)
   const [showTeamsModal, setShowTeamsModal] = useState(false)
+  const [gameweekStarted, setGameweekStarted] = useState(false)
+  const [picksLocked, setPicksLocked] = useState(false)
 
   // Weeks for the season
   const weeks = Array.from({ length: 38 }, (_, i) => i + 1)
@@ -64,6 +70,14 @@ function MakePicksContent() {
             setSelectedTeam(null)
             setSelectedGameId(null)
           }
+
+          // Calculate pick locking state
+          const gameweekHasStarted = hasGameweekStarted(currentLeague)
+          const hasExistingPick = !!userPick
+          const locksEnabled = arePicksLocked(hasExistingPick, gameweekHasStarted)
+          
+          setGameweekStarted(gameweekHasStarted)
+          setPicksLocked(locksEnabled)
         } catch (error) {
           console.error("Error fetching games data:", error)
         } finally {
@@ -86,11 +100,26 @@ function MakePicksContent() {
   }, [user, currentLeague, currentWeek])
 
   const handleTeamSelect = (gameId: number, teamId: number) => {
-    // Check if user has existing pick and if it can be changed
+    // Check if picks are locked due to gameweek starting
+    if (picksLocked) {
+      setError("Picks are locked because the gameweek has started and you already have a pick")
+      return
+    }
+
+    // Check if user has existing pick and if it can be changed (existing logic)
     if (userPickForWeek) {
       const existingGame = games.find(g => g.userPick?.user === user?.id)
       if (existingGame && !canChangeExistingPick(existingGame)) {
         setError("Cannot change pick because your selected game has already started")
+        return
+      }
+    }
+
+    // If gameweek has started and user has no pick, only allow picks from games that haven't started
+    if (gameweekStarted && !userPickForWeek) {
+      const selectedGame = games.find(g => g.id === gameId)
+      if (selectedGame && !canPickFromGame(selectedGame)) {
+        setError("Cannot pick from this game because it has already started")
         return
       }
     }
@@ -107,11 +136,26 @@ function MakePicksContent() {
   const handleSubmitPick = async () => {
     if (!user || !currentLeague || !selectedTeam || !selectedGameId) return
 
-    // Additional validation before submit
+    // Check if picks are locked due to gameweek starting
+    if (picksLocked) {
+      setError("Picks are locked because the gameweek has started and you already have a pick")
+      return
+    }
+
+    // Additional validation before submit (existing logic)
     if (userPickForWeek) {
       const existingGame = games.find(g => g.userPick?.user === user?.id)
       if (existingGame && !canChangeExistingPick(existingGame)) {
         setError("Cannot change pick because your selected game has already started")
+        return
+      }
+    }
+
+    // If gameweek has started and user has no pick, validate selected game hasn't started
+    if (gameweekStarted && !userPickForWeek) {
+      const selectedGame = games.find(g => g.id === selectedGameId)
+      if (selectedGame && !canPickFromGame(selectedGame)) {
+        setError("Cannot pick from this game because it has already started")
         return
       }
     }
@@ -322,7 +366,11 @@ function MakePicksContent() {
             </div>
           </div>
           <CardDescription className="text-white/80">
-            {hasPickableGames() ? (
+            {picksLocked ? (
+              "🔒 Picks are locked because the gameweek has started and you already have a pick for this week."
+            ) : gameweekStarted && !userPickForWeek ? (
+              "⚠️ The gameweek has started. You can still make your first pick, but only from games that haven't started yet."
+            ) : hasPickableGames() ? (
               "Choose one team for this week. Remember: You can pick each team up to twice per season!"
             ) : userPickForWeek ? (
               "You have made your pick for this week. You can change it if there are games that haven't started yet."
@@ -379,9 +427,9 @@ function MakePicksContent() {
                     <CardContent>
                       <div className="flex justify-between items-center">
                         <div
-                          className={getTeamSelectionClasses(game, isHomeSelected, isHomeTeamUsed)}
+                          className={getTeamSelectionClasses(game, isHomeSelected, isHomeTeamUsed, picksLocked)}
                           onClick={() => {
-                            if (canPick && !isHomeTeamUsed) {
+                            if (canPick && !isHomeTeamUsed && !picksLocked) {
                               handleTeamSelect(game.id, game.homeTeam.id)
                             }
                           }}
@@ -401,9 +449,9 @@ function MakePicksContent() {
                         </div>
 
                         <div
-                          className={getTeamSelectionClasses(game, isAwaySelected, isAwayTeamUsed)}
+                          className={getTeamSelectionClasses(game, isAwaySelected, isAwayTeamUsed, picksLocked)}
                           onClick={() => {
-                            if (canPick && !isAwayTeamUsed) {
+                            if (canPick && !isAwayTeamUsed && !picksLocked) {
                               handleTeamSelect(game.id, game.awayTeam.id)
                             }
                           }}
@@ -428,6 +476,7 @@ function MakePicksContent() {
                           selectedGameId !== game.id ||
                           submitting ||
                           !canPick ||
+                          picksLocked ||
                           (isHomeTeamUsed && selectedTeam === game.homeTeam.id) ||
                           (isAwayTeamUsed && selectedTeam === game.awayTeam.id)
                         }
