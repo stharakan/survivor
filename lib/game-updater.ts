@@ -433,11 +433,11 @@ export async function updateGameScores(): Promise<{
   logWithTimestamp('=== Game Score Update Started (Hybrid Approach) ===')
   
   try {
-    // Step 1: Extended range bulk query (today → +1 week)
-    const today = format(new Date(), 'yyyy-MM-dd')
+    // Step 1: Extended range bulk query (2 days ago → +1 week)
+    const twoDaysAgo = format(addDays(new Date(), -2), 'yyyy-MM-dd')
     const oneWeekFromToday = format(addDays(new Date(), 7), 'yyyy-MM-dd')
     
-    const bulkGames = await fetchBulkGames(today, oneWeekFromToday)
+    const bulkGames = await fetchBulkGames(twoDaysAgo, oneWeekFromToday)
     
     // Step 2: Find overdue games in database
     const overdueGames = await findOverdueGames()
