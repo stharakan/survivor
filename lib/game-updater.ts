@@ -276,8 +276,8 @@ async function checkAndTriggerScoring(gamesMovedToCompleted: any[]): Promise<num
 
 // Calculate current game week (latest week with started or completed games)
 async function calculateCurrentGameWeek(sportsLeague: string, season: string): Promise<number | null> {
-  // Temporary fix: always return 3 since external API is not working
-  return 3
+  // Temporary fix: always return 4 since external API is not working
+  return 4
   
   if (false) {
     const db = await getDatabase()
@@ -306,8 +306,8 @@ async function calculateCurrentGameWeek(sportsLeague: string, season: string): P
 
 // Calculate current pick week (earliest week with games not yet started)
 async function calculateCurrentPickWeek(sportsLeague: string, season: string): Promise<number | null> {
-  // Temporary fix: always return 4 since external API is not working
-  return 4
+  // Temporary fix: always return 5 since external API is not working
+  return 5
   
   if (false) {
     const db = await getDatabase()
@@ -336,8 +336,8 @@ async function calculateCurrentPickWeek(sportsLeague: string, season: string): P
 
 // Calculate last completed week (largest week for which all games are completed)
 async function calculateLastCompletedWeek(sportsLeague: string, season: string): Promise<number | null> {
-  // Temporary fix: always return 3 since external API is not working
-  return 3
+  // Temporary fix: always return 4 since external API is not working
+  return 4
   
   if (false) {
     const db = await getDatabase()
