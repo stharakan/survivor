@@ -16,9 +16,9 @@ function sleep(ms: number): Promise<void> {
 
 // Football Data API configuration
 const FOOTBALLDATA_API_KEY = process.env.FOOTBALLDATA_API_KEY
-const API_BASE_URL = 'https://api.football-data.org/v4'
-const COMPETITION_CODE = 'PL' // Premier League
-const REQUEST_DELAY = 6000 // 6 seconds between requests for rate limiting
+const API_BASE_URL = process.env.FOOTBALLDATA_API_URL || 'https://api.football-data.org/v4'
+const DEFAULT_COMPETITION_CODE = process.env.FOOTBALLDATA_COMPETITION_CODE || 'PL'
+const REQUEST_DELAY = parseInt(process.env.FOOTBALLDATA_REQUEST_DELAY || '6000')
 
 // Map Football Data API season format to database season format
 function mapApiSeasonToDatabase(apiSeason: string, competitionType: string = "EPL"): string {
@@ -28,6 +28,29 @@ function mapApiSeasonToDatabase(apiSeason: string, competitionType: string = "EP
     return `${year}/${year + 1}`  // "2025" → "2025/2026"
   }
   return apiSeason // Fallback for other leagues
+}
+
+// Get current season from environment or calculate from current date
+function getCurrentSeason(): string {
+  if (process.env.CURRENT_SEASON) {
+    return process.env.CURRENT_SEASON
+  }
+
+  // Calculate current season based on current date
+  const now = new Date()
+  const currentYear = now.getFullYear()
+  const month = now.getMonth() + 1 // JavaScript months are 0-indexed
+
+  // Football seasons typically start in August and end in May
+  // If it's June-July, we're in the off-season, use the upcoming season
+  if (month >= 8) {
+    return `${currentYear}/${currentYear + 1}`
+  } else if (month <= 5) {
+    return `${currentYear - 1}/${currentYear}`
+  } else {
+    // June-July: use upcoming season
+    return `${currentYear}/${currentYear + 1}`
+  }
 }
 
 
@@ -76,14 +99,15 @@ function mapApiStatusToInternal(apiStatus: string): GameStatus {
 }
 
 // Fetch games from Football Data API for extended range
-async function fetchBulkGames(dateFrom: string, dateTo: string): Promise<any[]> {
+async function fetchBulkGames(dateFrom: string, dateTo: string, competitionCode?: string): Promise<any[]> {
   if (!FOOTBALLDATA_API_KEY) {
     throw new Error('FOOTBALLDATA_API_KEY environment variable is required')
   }
 
-  logWithTimestamp(`Fetching bulk games from Football Data API: ${dateFrom} to ${dateTo}`)
-  
-  const url = `${API_BASE_URL}/competitions/${COMPETITION_CODE}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`
+  const competition = competitionCode || DEFAULT_COMPETITION_CODE
+  logWithTimestamp(`Fetching bulk games from Football Data API: ${dateFrom} to ${dateTo} for competition ${competition}`)
+
+  const url = `${API_BASE_URL}/competitions/${competition}/matches?dateFrom=${dateFrom}&dateTo=${dateTo}`
   
   try {
     const response = await fetch(url, {
@@ -146,38 +170,41 @@ async function fetchIndividualGame(externalId: string): Promise<any | null> {
 }
 
 // Find overdue games in database (started but still marked as not_started)
-async function findOverdueGames(): Promise<any[]> {
+async function findOverdueGames(excludeSeasons?: { sportsLeague: string; season: string }[]): Promise<any[]> {
   const db = await getDatabase()
   const now = new Date()
-  
+
   logWithTimestamp('Scanning database for overdue games...')
-  
-  const overdueGames = await db.collection(Collections.GAMES)
-    .find({
-      $and: [
-        { 
-          $or: [
-            { startTime: { $lt: now } },
-            { date: { $lt: now } }
-          ]
-        },
-        { status: 'not_started' },
-        // Exclude EPL 2024/2025 season games
-        {
-          $nor: [
-            {
-              $and: [
-                { sportsLeague: 'EPL' },
-                { season: '2024/2025' }
-              ]
-            }
-          ]
-        }
-      ]
+
+  const query: any = {
+    $and: [
+      {
+        $or: [
+          { startTime: { $lt: now } },
+          { date: { $lt: now } }
+        ]
+      },
+      { status: 'not_started' }
+    ]
+  }
+
+  // Add exclusion filter if provided
+  if (excludeSeasons && excludeSeasons.length > 0) {
+    query.$and.push({
+      $nor: excludeSeasons.map(exclude => ({
+        $and: [
+          { sportsLeague: exclude.sportsLeague },
+          { season: exclude.season }
+        ]
+      }))
     })
+  }
+
+  const overdueGames = await db.collection(Collections.GAMES)
+    .find(query)
     .toArray()
-  
-  logWithTimestamp(`Found ${overdueGames.length} overdue games (excluding EPL 2024/2025 season)`)
+
+  logWithTimestamp(`Found ${overdueGames.length} overdue games${excludeSeasons ? ' (with exclusions)' : ''}`)
   return overdueGames
 }
 
@@ -276,101 +303,86 @@ async function checkAndTriggerScoring(gamesMovedToCompleted: any[]): Promise<num
 
 // Calculate current game week (latest week with started or completed games)
 async function calculateCurrentGameWeek(sportsLeague: string, season: string): Promise<number | null> {
-  // Temporary fix: always return 4 since external API is not working
-  return 4
-  
-  if (false) {
-    const db = await getDatabase()
-    
-    const result = await db.collection(Collections.GAMES)
-      .aggregate([
-        {
-          $match: {
-            sportsLeague,
-            season,
-            status: { $in: ['in_progress', 'completed'] }
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            maxWeek: { $max: '$week' }
-          }
+  const db = await getDatabase()
+
+  const result = await db.collection(Collections.GAMES)
+    .aggregate([
+      {
+        $match: {
+          sportsLeague,
+          season,
+          status: { $in: ['in_progress', 'completed'] }
         }
-      ])
-      .toArray()
-    
-    return result.length > 0 ? result[0].maxWeek : null
-  }
+      },
+      {
+        $group: {
+          _id: null,
+          maxWeek: { $max: '$week' }
+        }
+      }
+    ])
+    .toArray()
+
+  return result.length > 0 ? result[0].maxWeek : null
 }
 
 // Calculate current pick week (earliest week with games not yet started)
 async function calculateCurrentPickWeek(sportsLeague: string, season: string): Promise<number | null> {
-  // Temporary fix: always return 5 since external API is not working
-  return 5
-  
-  if (false) {
-    const db = await getDatabase()
-    
-    const result = await db.collection(Collections.GAMES)
-      .aggregate([
-        {
-          $match: {
-            sportsLeague,
-            season,
-            status: 'not_started'
-          }
-        },
-        {
-          $group: {
-            _id: null,
-            minWeek: { $min: '$week' }
-          }
+  const db = await getDatabase()
+
+  const result = await db.collection(Collections.GAMES)
+    .aggregate([
+      {
+        $match: {
+          sportsLeague,
+          season,
+          status: 'not_started'
         }
-      ])
-      .toArray()
-    
-    return result.length > 0 ? result[0].minWeek : null
-  }
+      },
+      {
+        $group: {
+          _id: null,
+          minWeek: { $min: '$week' }
+        }
+      }
+    ])
+    .toArray()
+
+  return result.length > 0 ? result[0].minWeek : null
 }
 
 // Calculate last completed week (largest week for which all games are completed)
 async function calculateLastCompletedWeek(sportsLeague: string, season: string): Promise<number | null> {
-  // Temporary fix: always return 4 since external API is not working
-  return 4
-  
-  if (false) {
-    const db = await getDatabase()
-    
-    const result = await db.collection(Collections.GAMES)
-      .aggregate([
-        {
-          $match: {
-            sportsLeague,
-            season
-          }
-        },
-        {
-          $group: {
-            _id: '$week',
-            completedCount: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
-            totalCount: { $sum: 1 }
-          }
-        },
-        {
-          $match: { $expr: { $eq: ['$completedCount', '$totalCount'] } }
-        },
-        {
-          $group: {
-            _id: null,
-            maxCompletedWeek: { $max: '$_id' }
-          }
+  const db = await getDatabase()
+
+  const result = await db.collection(Collections.GAMES)
+    .aggregate([
+      {
+        $match: {
+          sportsLeague,
+          season
         }
-      ])
-      .toArray()
-    
-    return result.length > 0 ? result[0].maxCompletedWeek : null
-  }
+      },
+      {
+        $group: {
+          _id: '$week',
+          completedCount: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
+          totalCount: { $sum: 1 }
+        }
+      },
+      {
+        $match: { $expr: { $eq: ['$completedCount', '$totalCount'] } }
+      },
+      {
+        $group: {
+          _id: null,
+          maxCompletedWeek: { $max: '$_id' }
+        }
+      }
+    ])
+    .toArray()
+
+  return result.length > 0 ? result[0].maxCompletedWeek : null
 }
 
 // Update league week tracking for all leagues
@@ -433,14 +445,19 @@ export async function updateGameScores(): Promise<{
   logWithTimestamp('=== Game Score Update Started (Hybrid Approach) ===')
   
   try {
-    // Step 1: Extended range bulk query (2 days ago → +1 week)
-    const twoDaysAgo = format(addDays(new Date(), -2), 'yyyy-MM-dd')
-    const oneWeekFromToday = format(addDays(new Date(), 7), 'yyyy-MM-dd')
-    
-    const bulkGames = await fetchBulkGames(twoDaysAgo, oneWeekFromToday)
-    
-    // Step 2: Find overdue games in database
-    const overdueGames = await findOverdueGames()
+    // Step 1: Extended range bulk query (configurable date range)
+    const daysBack = parseInt(process.env.BULK_QUERY_DAYS_BACK || '7')
+    const daysForward = parseInt(process.env.BULK_QUERY_DAYS_FORWARD || '7')
+    const dateFrom = format(addDays(new Date(), -daysBack), 'yyyy-MM-dd')
+    const dateTo = format(addDays(new Date(), daysForward), 'yyyy-MM-dd')
+
+    const competitionCode = process.env.FOOTBALLDATA_COMPETITION_CODE
+    const bulkGames = await fetchBulkGames(dateFrom, dateTo, competitionCode)
+
+    // Step 2: Find overdue games in database (with optional season exclusions)
+    const excludeSeasons = process.env.EXCLUDE_SEASONS ?
+      JSON.parse(process.env.EXCLUDE_SEASONS) : undefined
+    const overdueGames = await findOverdueGames(excludeSeasons)
     
     // Step 3: Smart processing - try to find overdue games in bulk response first
     let individualApiCalls = 0
@@ -449,14 +466,15 @@ export async function updateGameScores(): Promise<{
     
     // Process bulk games first with enhanced matching
     for (const apiGame of bulkGames) {
-      // Extract season from API response (use current season as default)
-      const apiSeason = apiGame.season?.id ? '2025' : '2025' // Default to current season
-      
+      // Extract season from API response or use calculated current season
+      const currentSeasonYear = getCurrentSeason().split('/')[0]
+      const apiSeason = apiGame.season?.id?.toString() || currentSeasonYear
+
       // findMatchingDatabaseGame now throws an error if no match is found
       const dbGame = await findMatchingDatabaseGame(apiGame, apiSeason)
       const statusChangedToCompleted = await updateGameInDatabase(dbGame, apiGame)
       gamesUpdated++
-      
+
       if (statusChangedToCompleted) {
         gamesMovedToCompleted.push(dbGame)
       }
