@@ -517,4 +517,18 @@ node update-game-scores.js
 
 ```bash
 0 */3 * * * cd /path/to/script && SCORING_API_KEY="key" FOOTBALLDATA_API_KEY="key" node update-game-scores.js >> /var/log/game-updates.log 2>&1
+
+---
+
+## test-external-api.ts
+
+Tests the Football Data API using the same configuration as the game updater.
+
+**Usage:**
+```bash
+npx dotenv-cli -e .env.local npx tsx scripts/test-external-api.ts
+```
+
+**Output:**
+Date, gameweek, teams, scores, and status for matches in the configured date range.
 ```
