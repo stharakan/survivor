@@ -1574,3 +1574,130 @@ export async function createInvitationIndexes() {
   
   console.log('✓ Invitation indexes created')
 }
+
+// Results operations
+export interface ResultsData {
+  users: Array<{
+    id: string
+    name: string
+    picks: Array<{
+      week: number
+      teamName: string
+      result: "win" | "loss" | "draw" | null
+    }>
+  }>
+  completedWeeks: number[]
+}
+
+export async function getLeagueResults(leagueId: string): Promise<ResultsData> {
+  const db = await getDatabase()
+
+  // Get league info including last completed week
+  const league = await db.collection(Collections.LEAGUES).findOne({
+    _id: new ObjectId(leagueId)
+  })
+
+  const lastCompletedWeek = league?.last_completed_week || 0
+
+  // If no completed weeks, return empty data
+  if (lastCompletedWeek === 0) {
+    return {
+      users: [],
+      completedWeeks: []
+    }
+  }
+
+  const completedWeeks = Array.from({ length: lastCompletedWeek }, (_, i) => i + 1)
+
+  // Get league members with user data
+  const members = await getLeagueMembersWithUserData(leagueId)
+  const activeMembers = members.filter(member => member.status === 'active')
+
+  if (activeMembers.length === 0) {
+    return {
+      users: [],
+      completedWeeks
+    }
+  }
+
+  const memberUserIds = activeMembers.map(m => new ObjectId(m.user.toString()))
+
+  // Get all picks for completed weeks with results
+  const allPicks = await db.collection(Collections.PICKS)
+    .aggregate([
+      {
+        $match: {
+          userId: { $in: memberUserIds },
+          leagueId: new ObjectId(leagueId),
+          week: { $in: completedWeeks }
+        }
+      },
+      {
+        $lookup: {
+          from: Collections.TEAMS,
+          localField: 'teamId',
+          foreignField: 'id',
+          as: 'team'
+        }
+      },
+      { $unwind: '$team' },
+      {
+        $project: {
+          userId: 1,
+          week: 1,
+          teamName: '$team.name',
+          result: 1
+        }
+      }
+    ]).toArray()
+
+  // Group picks by user
+  const picksByUser = new Map<string, Array<{
+    week: number
+    teamName: string
+    result: "win" | "loss" | "draw" | null
+  }>>()
+
+  allPicks.forEach(pick => {
+    const userId = pick.userId.toString()
+    if (!picksByUser.has(userId)) {
+      picksByUser.set(userId, [])
+    }
+    picksByUser.get(userId)!.push({
+      week: pick.week,
+      teamName: pick.teamName,
+      result: pick.result
+    })
+  })
+
+  // Build user data with picks for all completed weeks
+  const users = activeMembers.map(member => {
+    const displayName = member.userDetails.name
+      ? `${member.teamName} (${member.userDetails.name})`
+      : member.teamName
+
+    const userId = member.user.toString()
+    const userPicks = picksByUser.get(userId) || []
+
+    // Ensure we have data for all completed weeks (fill missing weeks with null data)
+    const picks = completedWeeks.map(week => {
+      const weekPick = userPicks.find(p => p.week === week)
+      return weekPick || {
+        week,
+        teamName: '—',
+        result: null
+      }
+    })
+
+    return {
+      id: userId,
+      name: displayName,
+      picks
+    }
+  }).sort((a, b) => a.name.localeCompare(b.name)) // Sort alphabetically
+
+  return {
+    users,
+    completedWeeks
+  }
+}

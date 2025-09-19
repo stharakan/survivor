@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
-import { LogOut, Menu, User, Trophy, CheckSquare, Settings, FileText } from "lucide-react"
+import { LogOut, Menu, User, Trophy, CheckSquare, Settings, FileText, Grid3X3 } from "lucide-react"
 import { useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
@@ -35,6 +35,12 @@ export default function Navbar() {
       label: "Scoreboard",
       icon: <Trophy className="h-4 w-4 mr-2" />,
       active: pathname === "/scoreboard",
+    },
+    {
+      href: "/results",
+      label: "Results",
+      icon: <Grid3X3 className="h-4 w-4 mr-2" />,
+      active: pathname === "/results",
     },
     {
       href: "/rules",

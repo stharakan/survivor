@@ -113,6 +113,21 @@ export async function getScoreboard(leagueId: number): Promise<{
   return apiRequest(`/leagues/${leagueId}/scoreboard`)
 }
 
+export async function getLeagueResults(leagueId: number): Promise<{
+  users: Array<{
+    id: string
+    name: string
+    picks: Array<{
+      week: number
+      teamName: string
+      result: "win" | "loss" | "draw" | null
+    }>
+  }>
+  completedWeeks: number[]
+}> {
+  return apiRequest(`/leagues/${leagueId}/results`)
+}
+
 export async function getProfile(userId: string, leagueId: number): Promise<User> {
   return apiRequest(`/users/${userId}?league_id=${leagueId}`)
 }

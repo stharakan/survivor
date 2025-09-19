@@ -87,4 +87,12 @@
   .retro-gradient {
     @apply bg-gradient-to-r from-retro-orange to-retro-red text-white;
   }
+
+  /* Results grid sticky header */
+  .results-sticky-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    backdrop-filter: blur(8px);
+  }
 }
