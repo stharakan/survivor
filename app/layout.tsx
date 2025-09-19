@@ -33,6 +33,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <meta name="google-site-verification" content="NoYnKpg8U3TThNZCcXlDHu_JfHpDP7LGF39Z-DhJMek" />
+      </head>
       <body className={`bg-[#f0e6d2] dark:bg-[#121212] min-h-screen ${pressStart2P.variable} ${sourceCodePro.variable}`}>
         <ThemeProvider attribute="class" defaultTheme="light" enableSystem disableTransitionOnChange>
           <Providers>
