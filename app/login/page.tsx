@@ -5,6 +5,7 @@ import type React from "react"
 import { useState, useEffect, Suspense } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useSearchParams, useRouter } from "next/navigation"
+import { getSafeRedirectUrl } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -29,10 +30,9 @@ function LoginContent() {
 
     try {
       await login(email, password)
-      // Redirect to the specified URL after successful login
-      if (redirect) {
-        router.push(redirect)
-      }
+      // Redirect to the specified URL after successful login (with security validation)
+      const safeRedirectUrl = getSafeRedirectUrl(redirect)
+      router.push(safeRedirectUrl)
     } catch (err) {
       setError("Invalid email or password. Please try again.")
     }
