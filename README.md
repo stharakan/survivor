@@ -147,12 +147,41 @@ This frontend application expects a Django REST API backend with the following e
 }
 \`\`\`
 
+#### PATCH `/api/users/{user_id}/`
+**Called from**: `app/profile/page.tsx` - User's own profile editing
+**Purpose**: Update user profile information (display name)
+**Headers**: `Authorization: Bearer <token>`
+**Authorization**: Users can only modify their own profile (user_id must match authenticated user)
+**Request Body**:
+\`\`\`json
+{
+  "name": "New Display Name"
+}
+\`\`\`
+**Response**:
+\`\`\`json
+{
+  "success": true,
+  "data": {
+    "id": "user_id",
+    "email": "user@example.com",
+    "name": "New Display Name"
+  }
+}
+\`\`\`
+**Error Responses**:
+- `401 Unauthorized`: Missing or invalid authentication token
+- `403 Forbidden`: Attempting to modify another user's profile
+- `400 Bad Request`: Invalid data (name > 12 characters)
+- `404 Not Found`: User does not exist
+
 ### League Standings Endpoints
 
 #### GET `/api/leagues/{league_id}/scoreboard/`
 **Called from**: `app/scoreboard/page.tsx`
 **Purpose**: Get current league standings for specific league
 **Headers**: `Authorization: Bearer <token>`
+**Authorization**: User must be an active member of the target league
 **Response**:
 \`\`\`json
 [
@@ -165,6 +194,39 @@ This frontend application expects a Django REST API backend with the following e
   }
 ]
 \`\`\`
+**Error Responses**:
+- `401 Unauthorized`: Missing or invalid authentication token
+- `403 Forbidden`: User is not a member of this league
+- `404 Not Found`: League does not exist
+
+#### GET `/api/leagues/{league_id}/results/`
+**Called from**: Results page components
+**Purpose**: Get league results with pick outcomes for all completed weeks
+**Headers**: `Authorization: Bearer <token>`
+**Authorization**: User must be an active member of the target league
+**Error Responses**:
+- `401 Unauthorized`: Missing or invalid authentication token
+- `403 Forbidden`: User is not a member of this league
+- `404 Not Found`: League does not exist
+
+#### GET `/api/leagues/{league_id}/`
+**Called from**: Various components for league details
+**Purpose**: Get specific league information and settings
+**Headers**: `Authorization: Bearer <token>`
+**Authorization**: User must be an active member of the target league
+**Error Responses**:
+- `401 Unauthorized`: Missing or invalid authentication token
+- `403 Forbidden`: User is not a member of this league
+- `404 Not Found`: League does not exist
+
+#### GET `/api/leagues/{league_id}/members/`
+**Called from**: Admin and member management components
+**Purpose**: Get list of all members in the league
+**Headers**: `Authorization: Bearer <token>`
+**Authorization**: User must be an active member of the target league
+**Error Responses**:
+- `401 Unauthorized`: Missing or invalid authentication token
+- `403 Forbidden`: User is not a member of this league
 
 ### Games and Picks Endpoints
 

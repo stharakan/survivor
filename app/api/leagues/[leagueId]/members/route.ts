@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server'
 import { getLeagueMembersWithUserData } from '@/lib/db'
 import { createApiResponse, handleApiError } from '@/lib/api-types'
-import jwt from 'jsonwebtoken'
+import { verifyLeagueMembership } from '@/lib/auth-utils'
 
 // GET /api/leagues/[leagueId]/members - Get league members
 export async function GET(
@@ -11,26 +11,19 @@ export async function GET(
   try {
     // Await params for Next.js 15 compatibility
     const { leagueId } = await params
-    
-    // Verify authentication
-    const token = request.cookies.get('auth-token')?.value
-    if (!token) {
-      return Response.json(
-        createApiResponse(false, undefined, 'Authentication required'),
-        { status: 401 }
-      )
-    }
-    
-    // Verify JWT token
+
+    // Verify user authentication and league membership
     try {
-      jwt.verify(token, process.env.JWT_SECRET || 'fallback-secret')
-    } catch {
+      await verifyLeagueMembership(request, leagueId)
+    } catch (authError: any) {
+      const status = authError.message.includes('Authentication required') ||
+                    authError.message.includes('Invalid authentication token') ? 401 : 403
       return Response.json(
-        createApiResponse(false, undefined, 'Invalid token'),
-        { status: 401 }
+        createApiResponse(false, undefined, authError.message),
+        { status }
       )
     }
-    
+
     const members = await getLeagueMembersWithUserData(leagueId)
     return Response.json(createApiResponse(true, members))
   } catch (error) {

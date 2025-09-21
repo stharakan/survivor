@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server'
 import { getLeagueById, updateLeagueSettings } from '@/lib/db'
 import { getDatabase, Collections } from '@/lib/mongodb'
 import { createApiResponse, handleApiError } from '@/lib/api-types'
+import { verifyLeagueMembership } from '@/lib/auth-utils'
 import { ObjectId } from 'mongodb'
 import jwt from 'jsonwebtoken'
 
@@ -11,15 +12,29 @@ export async function GET(
   { params }: { params: { leagueId: string } }
 ) {
   try {
-    const league = await getLeagueById(params.leagueId)
-    
+    const { leagueId } = params
+
+    // Verify user authentication and league membership
+    try {
+      await verifyLeagueMembership(request, leagueId)
+    } catch (authError: any) {
+      const status = authError.message.includes('Authentication required') ||
+                    authError.message.includes('Invalid authentication token') ? 401 : 403
+      return Response.json(
+        createApiResponse(false, undefined, authError.message),
+        { status }
+      )
+    }
+
+    const league = await getLeagueById(leagueId)
+
     if (!league) {
       return Response.json(
         createApiResponse(false, undefined, 'League not found'),
         { status: 404 }
       )
     }
-    
+
     return Response.json(createApiResponse(true, league))
   } catch (error) {
     return handleApiError(error)

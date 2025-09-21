@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server'
 import { getUserById, updateUser } from '@/lib/db'
 import { createApiResponse, handleApiError } from '@/lib/api-types'
+import { verifyAuthToken } from '@/lib/auth-utils'
 
 // GET /api/users/[userId] - Get user profile
 export async function GET(
@@ -33,6 +34,26 @@ export async function PATCH(
   try {
     // Await params for Next.js 15 compatibility
     const { userId } = await params
+
+    // Verify authentication and get user context
+    let authUser;
+    try {
+      authUser = await verifyAuthToken(request)
+    } catch (authError: any) {
+      return Response.json(
+        createApiResponse(false, undefined, authError.message),
+        { status: 401 }
+      )
+    }
+
+    // Authorization check: users can only modify their own profile
+    if (authUser.userId !== userId) {
+      return Response.json(
+        createApiResponse(false, undefined, 'Unauthorized: can only modify your own profile'),
+        { status: 403 }
+      )
+    }
+
     const body = await request.json()
     const { name } = body
     

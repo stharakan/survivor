@@ -227,7 +227,34 @@ export async function authorizeRequest(
   if (typeof updates.isAdmin === 'boolean') {
     await validateAdminPermission(authUser.userId, leagueId, memberId, updates.isAdmin)
   }
-  
+
   return authContext
+}
+
+/**
+ * Verify user authentication and league membership for league-scoped endpoints
+ * Ensures only active league members can access league data
+ */
+export async function verifyLeagueMembership(
+  request: NextRequest,
+  leagueId: string
+): Promise<AuthUser> {
+  // Verify authentication first
+  const authUser = await verifyAuthToken(request)
+
+  // Check league membership using existing authorization context
+  const authContext = await getAuthorizationContext(authUser.userId, leagueId)
+
+  // Ensure user is an active member of the league
+  if (!authContext.membership) {
+    throw new Error('You are not a member of this league')
+  }
+
+  // Additional check for active status (if the membership has status field)
+  if (authContext.membership.status && authContext.membership.status !== 'active') {
+    throw new Error('Your membership in this league is not active')
+  }
+
+  return authUser
 }
 
