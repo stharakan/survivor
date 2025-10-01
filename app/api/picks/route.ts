@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
     const existingPick = await getUserPickForWeek(userId, leagueId, week)
     
     // Validate pick locking rules
-    const gameweekStarted = hasGameweekStarted(league)
+    const gameweekStarted = hasGameweekStarted(league, week)
     const picksLocked = arePicksLocked(!!existingPick, gameweekStarted)
     
     if (picksLocked) {

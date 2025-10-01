@@ -72,7 +72,7 @@ function MakePicksContent() {
           }
 
           // Calculate pick locking state
-          const gameweekHasStarted = hasGameweekStarted(currentLeague)
+          const gameweekHasStarted = hasGameweekStarted(currentLeague, currentWeek)
           const hasExistingPick = !!userPick
           const locksEnabled = arePicksLocked(hasExistingPick, gameweekHasStarted)
           

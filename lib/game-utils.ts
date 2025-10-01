@@ -170,14 +170,27 @@ export function getTeamSelectionClasses(
 /**
  * Checks if the gameweek has started by comparing current_pick_week with current_game_week
  * Gameweek is considered "started" when current_pick_week === current_game_week
+ *
+ * @param league - League object containing current week information
+ * @param targetWeek - Optional specific week to check. If provided, checks if this week has started
+ *                     by comparing against current_game_week. If not provided, uses original logic.
  */
-export function hasGameweekStarted(league: { 
-  current_pick_week?: number | null; 
-  current_game_week?: number | null 
-}): boolean {
+export function hasGameweekStarted(
+  league: {
+    current_pick_week?: number | null;
+    current_game_week?: number | null
+  },
+  targetWeek?: number
+): boolean {
   const pickWeek = league.current_pick_week || 0
   const gameWeek = league.current_game_week || 0
-  
+
+  // If targetWeek is provided, check if that specific week has started
+  if (targetWeek !== undefined) {
+    return targetWeek <= gameWeek && gameWeek > 0
+  }
+
+  // Original logic: gameweek is considered "started" when current_pick_week === current_game_week
   return pickWeek === gameWeek && pickWeek > 0
 }
 
