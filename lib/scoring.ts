@@ -99,20 +99,38 @@ export async function calculateScoresAndStrikes(): Promise<number> {
 
     logWithTimestamp(`Found ${memberships.length} active league memberships to process`)
 
+    // Pre-fetch all leagues to get last_completed_week (avoids N+1 queries)
+    const leagueIds = [...new Set(memberships.map(m => m.leagueId.toString()))]
+    const leagues = await database.collection(Collections.LEAGUES)
+      .find({ _id: { $in: leagueIds.map(id => new ObjectId(id)) } })
+      .toArray()
+    const leagueMap = new Map(leagues.map(l => [l._id.toString(), l]))
+
     for (const membership of memberships) {
       try {
-        // Get all picks for this user in this league with non-null results
+        // Get league to determine last completed week
+        const league = leagueMap.get(membership.leagueId.toString())
+        const lastCompletedWeek = league?.last_completed_week ?? 0
+
+        // Get all picks for this user in this league for completed weeks only
         const picks = await database.collection(Collections.PICKS)
           .find({
             userId: membership.userId,
             leagueId: membership.leagueId,
-            result: { $ne: null }
+            result: { $ne: null },
+            week: { $lte: lastCompletedWeek }
           })
           .toArray()
 
-        // Calculate points and strikes
+        // Count unique weeks with picks
+        const weeksWithPicks = new Set(picks.map(p => p.week)).size
+
+        // Calculate missed weeks (strikes for not picking)
+        const missedWeeks = Math.max(0, lastCompletedWeek - weeksWithPicks)
+
+        // Calculate points and loss strikes from picks
         let totalPoints = 0
-        let totalStrikes = 0
+        let lossStrikes = 0
 
         for (const pick of picks) {
           switch (pick.result) {
@@ -123,26 +141,29 @@ export async function calculateScoresAndStrikes(): Promise<number> {
               totalPoints += 1
               break
             case "loss":
-              totalStrikes += 1
+              lossStrikes += 1
               break
           }
         }
 
+        // Total strikes = losses + missed weeks
+        const totalStrikes = lossStrikes + missedWeeks
+
         // Update the league membership with calculated values
         const updateResult = await database.collection(Collections.LEAGUE_MEMBERSHIPS).updateOne(
           { _id: membership._id },
-          { 
-            $set: { 
+          {
+            $set: {
               points: totalPoints,
-              strikes: totalStrikes 
-            } 
+              strikes: totalStrikes
+            }
           }
         )
 
         if (updateResult.modifiedCount > 0) {
           processedCount++
           logWithTimestamp(
-            `Updated ${membership.teamName}: ${totalPoints} points, ${totalStrikes} strikes (from ${picks.length} completed picks)`
+            `Updated ${membership.teamName}: ${totalPoints} points, ${totalStrikes} strikes (${lossStrikes} losses + ${missedWeeks} missed weeks, from ${picks.length} picks)`
           )
         }
 
