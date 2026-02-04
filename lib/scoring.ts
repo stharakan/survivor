@@ -66,7 +66,7 @@ export async function updatePickResults(): Promise<number> {
             { _id: pick._id },
             { $set: { result } }
           )
-          
+
           updatedCount++
           logWithTimestamp(`Updated pick ${pick._id}: ${result} (Game ${game.id}, Week ${game.week})`)
         }
@@ -97,36 +97,34 @@ export async function calculateScoresAndStrikes(): Promise<number> {
       .find({ isActive: true, status: 'active' })
       .toArray()
 
-    logWithTimestamp(`Found ${memberships.length} active league memberships to process`)
-
-    // Pre-fetch all leagues to get last_completed_week (avoids N+1 queries)
-    const leagueIds = [...new Set(memberships.map(m => m.leagueId.toString()))]
+    // Build a map of leagueId → last_completed_week
     const leagues = await database.collection(Collections.LEAGUES)
-      .find({ _id: { $in: leagueIds.map(id => new ObjectId(id)) } })
+      .find({ isActive: true })
+      .project({ last_completed_week: 1 })
       .toArray()
-    const leagueMap = new Map(leagues.map(l => [l._id.toString(), l]))
+    const leagueWeekMap = new Map<string, number>()
+    for (const league of leagues) {
+      leagueWeekMap.set(league._id.toString(), league.last_completed_week ?? 0)
+    }
+
+    logWithTimestamp(`Found ${memberships.length} active league memberships to process`)
 
     for (const membership of memberships) {
       try {
-        // Get league to determine last completed week
-        const league = leagueMap.get(membership.leagueId.toString())
-        const lastCompletedWeek = league?.last_completed_week ?? 0
+        const lastCompletedWeek = leagueWeekMap.get(membership.leagueId.toString()) ?? 0
 
-        // Get all picks for this user in this league for completed weeks only
+        // Get all picks for this user in this league for completed weeks
         const picks = await database.collection(Collections.PICKS)
           .find({
             userId: membership.userId,
             leagueId: membership.leagueId,
-            result: { $ne: null },
             week: { $lte: lastCompletedWeek }
           })
           .toArray()
 
-        // Count unique weeks with picks
+        // Count unique weeks with picks to determine missed weeks
         const weeksWithPicks = new Set(picks.map(p => p.week)).size
-
-        // Calculate missed weeks (strikes for not picking)
-        const missedWeeks = Math.max(0, lastCompletedWeek - weeksWithPicks)
+        const missingPickStrikes = Math.max(0, lastCompletedWeek - weeksWithPicks)
 
         // Calculate points and loss strikes from picks
         let totalPoints = 0
@@ -147,7 +145,7 @@ export async function calculateScoresAndStrikes(): Promise<number> {
         }
 
         // Total strikes = losses + missed weeks
-        const totalStrikes = lossStrikes + missedWeeks
+        const totalStrikes = lossStrikes + missingPickStrikes
 
         // Update the league membership with calculated values
         const updateResult = await database.collection(Collections.LEAGUE_MEMBERSHIPS).updateOne(
@@ -155,7 +153,9 @@ export async function calculateScoresAndStrikes(): Promise<number> {
           {
             $set: {
               points: totalPoints,
-              strikes: totalStrikes
+              strikes: totalStrikes,
+              lossStrikes,
+              missingPickStrikes
             }
           }
         )
@@ -163,7 +163,7 @@ export async function calculateScoresAndStrikes(): Promise<number> {
         if (updateResult.modifiedCount > 0) {
           processedCount++
           logWithTimestamp(
-            `Updated ${membership.teamName}: ${totalPoints} points, ${totalStrikes} strikes (${lossStrikes} losses + ${missedWeeks} missed weeks, from ${picks.length} picks)`
+            `Updated ${membership.teamName}: ${totalPoints} points, ${totalStrikes} strikes (${lossStrikes} losses + ${missingPickStrikes} missed weeks, from ${picks.length} picks)`
           )
         }
 
@@ -172,7 +172,7 @@ export async function calculateScoresAndStrikes(): Promise<number> {
       }
     }
 
-    logWithTimestamp(`Completed score and strikes calculation: ${processedCount} memberships updated`)
+    logWithTimestamp(`Strike calculation complete. Updated ${processedCount} players.`)
     return processedCount
 
   } catch (error) {

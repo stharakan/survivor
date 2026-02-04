@@ -24,6 +24,8 @@ export type LeagueMembership = {
   teamName: string
   points: number
   strikes: number
+  lossStrikes?: number
+  missingPickStrikes?: number
   rank: number
   joinedAt: string
   isActive: boolean
