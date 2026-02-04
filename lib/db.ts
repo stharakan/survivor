@@ -479,6 +479,8 @@ export async function getLeagueMembersWithUserData(leagueId: string): Promise<Ar
     teamName: membership.teamName,
     points: membership.points,
     strikes: membership.strikes,
+    lossStrikes: membership.lossStrikes,
+    missingPickStrikes: membership.missingPickStrikes,
     rank: membership.rank,
     isActive: membership.isActive,
     isAdmin: membership.isAdmin,

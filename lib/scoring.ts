@@ -118,6 +118,7 @@ export async function calculateScoresAndStrikes(): Promise<number> {
           .find({
             userId: membership.userId,
             leagueId: membership.leagueId,
+            result: { $ne: null },
             week: { $lte: lastCompletedWeek }
           })
           .toArray()
