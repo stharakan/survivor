@@ -10,6 +10,7 @@
     "calculate-scores": "npx tsx scripts/calculate-scores.ts",
     "test": "jest",
     "test:watch": "jest --watch"
+    "clone-prod-to-dev": "npx tsx --env-file=.env.local scripts/clone-prod-to-dev.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
