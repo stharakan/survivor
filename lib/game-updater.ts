@@ -242,19 +242,38 @@ function findGameInBulkResponse(dbGame: any, apiGames: any[]): any | null {
 }
 
 // Update a single game in the database
-async function updateGameInDatabase(dbGame: any, apiGame: any): Promise<boolean> {
+// Returns { statusChangedToCompleted, picksReset } to inform caller about what changed
+async function updateGameInDatabase(dbGame: any, apiGame: any): Promise<{ statusChangedToCompleted: boolean, picksReset: number }> {
   const db = await getDatabase()
-  
+
   const newStatus = mapApiStatusToInternal(apiGame.status)
   const newStartTime = apiGame.utcDate
   const newHomeScore = apiGame.score?.fullTime?.home ?? null
   const newAwayScore = apiGame.score?.fullTime?.away ?? null
-  
+
   // Check if this is a status change to completed
   const statusChangedToCompleted = dbGame.status !== 'completed' && newStatus === 'completed'
-  
+
+  // Check if scores changed on an already-completed game — reset stale pick results
+  const scoresChangedOnCompletedGame = dbGame.status === 'completed' &&
+    (dbGame.homeScore !== newHomeScore || dbGame.awayScore !== newAwayScore)
+
+  let picksReset = 0
+  if (scoresChangedOnCompletedGame) {
+    const resetResult = await db.collection(Collections.PICKS).updateMany(
+      { gameId: dbGame.id, result: { $ne: null } },
+      { $set: { result: null } }
+    )
+    picksReset = resetResult.modifiedCount
+    logWithTimestamp(
+      `SCORE CORRECTION: Game ${dbGame.id} (${dbGame.homeTeam?.name} vs ${dbGame.awayTeam?.name}) ` +
+      `scores changed from ${dbGame.homeScore}-${dbGame.awayScore} to ${newHomeScore}-${newAwayScore}. ` +
+      `Reset ${picksReset} pick(s) for re-scoring.`
+    )
+  }
+
   // Update the game
-  const updateResult = await db.collection(Collections.GAMES).updateOne(
+  await db.collection(Collections.GAMES).updateOne(
     { _id: dbGame._id },
     {
       $set: {
@@ -268,10 +287,10 @@ async function updateGameInDatabase(dbGame: any, apiGame: any): Promise<boolean>
       }
     }
   )
-  
+
   logWithTimestamp(`Updated game ${dbGame.id}: ${dbGame.status} → ${newStatus}`)
-  
-  return statusChangedToCompleted
+
+  return { statusChangedToCompleted, picksReset }
 }
 
 // Check if any users have picks for completed games and trigger scoring if needed
@@ -462,8 +481,9 @@ export async function updateGameScores(): Promise<{
     // Step 3: Smart processing - try to find overdue games in bulk response first
     let individualApiCalls = 0
     let gamesUpdated = 0
+    let totalPicksReset = 0
     const gamesMovedToCompleted: any[] = []
-    
+
     // Process bulk games first with enhanced matching
     for (const apiGame of bulkGames) {
       // Extract season from API response or use calculated current season
@@ -472,27 +492,29 @@ export async function updateGameScores(): Promise<{
 
       // findMatchingDatabaseGame now throws an error if no match is found
       const dbGame = await findMatchingDatabaseGame(apiGame, apiSeason)
-      const statusChangedToCompleted = await updateGameInDatabase(dbGame, apiGame)
+      const { statusChangedToCompleted, picksReset } = await updateGameInDatabase(dbGame, apiGame)
       gamesUpdated++
+      totalPicksReset += picksReset
 
       if (statusChangedToCompleted) {
         gamesMovedToCompleted.push(dbGame)
       }
     }
-    
+
     // Step 4: Process overdue games not found in bulk response
     for (const overdueGame of overdueGames) {
       const foundInBulk = findGameInBulkResponse(overdueGame, bulkGames)
-      
+
       if (!foundInBulk && overdueGame.externalId) {
         // Make individual API call
         const individualGame = await fetchIndividualGame(overdueGame.externalId)
         individualApiCalls++
-        
+
         if (individualGame) {
-          const statusChangedToCompleted = await updateGameInDatabase(overdueGame, individualGame)
+          const { statusChangedToCompleted, picksReset } = await updateGameInDatabase(overdueGame, individualGame)
           gamesUpdated++
-          
+          totalPicksReset += picksReset
+
           if (statusChangedToCompleted) {
             gamesMovedToCompleted.push(overdueGame)
           }
@@ -502,15 +524,21 @@ export async function updateGameScores(): Promise<{
       }
     }
     
-    // Step 5: Trigger scoring if games completed with user picks
+    // Step 5: Trigger scoring if games completed with user picks OR picks were reset for re-scoring
     const picksUpdated = await checkAndTriggerScoring(gamesMovedToCompleted)
-    
+
+    // If picks were reset due to score corrections but no games newly completed, run scoring separately
+    if (totalPicksReset > 0 && gamesMovedToCompleted.length === 0) {
+      logWithTimestamp(`${totalPicksReset} pick(s) were reset due to score corrections. Triggering re-scoring...`)
+      await runScoringCalculation()
+    }
+
     // Step 6: Update league week tracking
     const leaguesUpdated = await updateLeagueWeekTracking()
-    
+
     const endTime = new Date()
     const executionTime = Math.round((endTime.getTime() - startTime.getTime()) / 1000)
-    
+
     logWithTimestamp('=== Game Score Update Completed Successfully ===')
     logWithTimestamp(`Summary:`)
     logWithTimestamp(`  • ${bulkGames.length} games processed from bulk API`)
@@ -519,6 +547,7 @@ export async function updateGameScores(): Promise<{
     logWithTimestamp(`  • ${gamesUpdated} games updated in database`)
     logWithTimestamp(`  • ${gamesMovedToCompleted.length} games moved to completed status`)
     logWithTimestamp(`  • ${picksUpdated} user picks affected by completed games`)
+    logWithTimestamp(`  • ${totalPicksReset} pick(s) reset due to score corrections`)
     logWithTimestamp(`  • ${leaguesUpdated} leagues updated with week tracking`)
     logWithTimestamp(`  • Total execution time: ${executionTime} seconds`)
     logWithTimestamp(`  • Completed at: ${endTime.toISOString()}`)
