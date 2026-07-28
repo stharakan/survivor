@@ -3,15 +3,17 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getProfile, getUserPicks, updateUserProfile, updateMemberStatus } from "@/lib/api"
+import { getProfile, getUserPicks, updateUserProfile, updateMemberStatus, getSeasonSummary } from "@/lib/api"
 import type { User } from "@/types/user"
 import type { Pick } from "@/types/pick"
+import type { SeasonSummary } from "@/types/season-summary"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { CheckCircle2, XCircle, MinusCircle, UserIcon, Shield, Edit3, Check, X } from "lucide-react"
+import { CheckCircle2, XCircle, MinusCircle, UserIcon, Shield, Edit3, Check, X, Trophy, Award } from "lucide-react"
 import { format } from "date-fns"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
@@ -28,17 +30,20 @@ function ProfileContent() {
   const [isEditingTeamName, setIsEditingTeamName] = useState(false)
   const [editingTeamName, setEditingTeamName] = useState("")
   const [savingTeamName, setSavingTeamName] = useState(false)
+  const [seasonSummary, setSeasonSummary] = useState<SeasonSummary | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
       if (user && currentLeague) {
         try {
-          const [profileData, picksData] = await Promise.all([
+          const [profileData, picksData, summaryData] = await Promise.all([
             getProfile(user.id, currentLeague.id),
             getUserPicks(user.id, currentLeague.id),
+            getSeasonSummary(currentLeague.id).catch(() => null),
           ])
           setProfile(profileData)
           setPicks(picksData)
+          setSeasonSummary(summaryData)
         } catch (error) {
           console.error("Error fetching profile data:", error)
         } finally {
@@ -147,6 +152,34 @@ function ProfileContent() {
           <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={60} height={60} />
         </div>
       </div>
+
+      {seasonSummary?.isLeagueEnded && (
+        <div className="space-y-3">
+          <Alert className="border-4 border-red-600 bg-red-50 dark:bg-red-950">
+            <Award className="h-5 w-5 text-red-600" />
+            <AlertTitle className="font-heading text-red-600">Season Complete</AlertTitle>
+            <AlertDescription>
+              This league has ended. All stats below are final.
+            </AlertDescription>
+          </Alert>
+
+          {/* Show prizes won by current user */}
+          {seasonSummary.prizes
+            .filter(p => p.userId === user?.id)
+            .map(prize => (
+              <Alert key={prize.prize} className="border-4 border-retro-yellow bg-yellow-50 dark:bg-yellow-950">
+                <Trophy className="h-5 w-5 text-retro-yellow" />
+                <AlertTitle className="font-heading text-retro-orange">
+                  Prize Won: {prize.prizeName}
+                </AlertTitle>
+                <AlertDescription>
+                  {prize.stat}
+                </AlertDescription>
+              </Alert>
+            ))
+          }
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Left box: User info */}
@@ -263,17 +296,23 @@ function ProfileContent() {
 
               <div className="grid grid-cols-3 gap-4 mt-6">
                 <div className="border-2 border-black p-3 text-center">
-                  <p className="text-sm font-medium text-muted-foreground">Points</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {seasonSummary?.isLeagueEnded ? "Final Points" : "Points"}
+                  </p>
                   <p className="text-2xl font-bold">{currentMembership?.points || 0}</p>
                 </div>
 
                 <div className="border-2 border-black p-3 text-center">
-                  <p className="text-sm font-medium text-muted-foreground">Strikes</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {seasonSummary?.isLeagueEnded ? "Final Strikes" : "Strikes"}
+                  </p>
                   <p className="text-2xl font-bold">{currentMembership?.strikes || 0}</p>
                 </div>
 
                 <div className="border-2 border-black p-3 text-center">
-                  <p className="text-sm font-medium text-muted-foreground">Survived</p>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    {seasonSummary?.isLeagueEnded ? "Final Wins" : "Survived"}
+                  </p>
                   <p className="text-2xl font-bold">{picks.filter((p) => p.result === "win").length}</p>
                 </div>
               </div>

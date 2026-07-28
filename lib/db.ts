@@ -7,6 +7,7 @@ import type { Game, GameStatus } from '@/types/game'
 import type { Pick } from '@/types/pick'
 import type { Player } from '@/types/player'
 import type { LeagueInvitation, InvitationWithLeague, InvitationAcceptanceInfo } from '@/types/invitation'
+import type { SeasonSummary, PrizeWinner, FinalStanding } from '@/types/season-summary'
 import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 
@@ -1702,4 +1703,186 @@ export async function getLeagueResults(leagueId: string): Promise<ResultsData> {
     users,
     completedWeeks
   }
+}
+
+// Get season summary with prize winners and final standings
+export async function getSeasonSummary(leagueId: string): Promise<SeasonSummary> {
+  const db = await getDatabase()
+
+  // Get league info
+  const league = await db.collection(Collections.LEAGUES).findOne({
+    _id: new ObjectId(leagueId)
+  })
+
+  if (!league) {
+    throw new Error('League not found')
+  }
+
+  const lastCompletedWeek = league.last_completed_week || 0
+
+  // Get all active members with user data
+  const members = await getLeagueMembersWithUserData(leagueId)
+  const activeMembers = members.filter(m => m.status === 'active')
+
+  // League is ended if all active members have 2+ strikes
+  const isLeagueEnded = activeMembers.length > 0 &&
+    activeMembers.every(m => m.strikes >= 2)
+
+  if (activeMembers.length === 0 || lastCompletedWeek === 0) {
+    return { isLeagueEnded, prizes: [], standings: [] }
+  }
+
+  // Get all picks for the league up to last completed week
+  const memberUserIds = activeMembers.map(m => new ObjectId(m.user.toString()))
+  const allPicks = await db.collection(Collections.PICKS).find({
+    userId: { $in: memberUserIds },
+    leagueId: new ObjectId(leagueId),
+    week: { $lte: lastCompletedWeek }
+  }).toArray()
+
+  // Group picks by user and week
+  const picksByUser = new Map<string, Map<number, any>>()
+  allPicks.forEach(pick => {
+    const userId = pick.userId.toString()
+    if (!picksByUser.has(userId)) picksByUser.set(userId, new Map())
+    picksByUser.get(userId)!.set(pick.week, pick)
+  })
+
+  // For each member, walk through weeks chronologically to compute elimination data
+  const playerData = activeMembers.map(member => {
+    const userId = member.user.toString()
+    const displayName = (member as any).userDetails?.name
+      ? `${member.teamName} (${(member as any).userDetails.name})`
+      : member.teamName
+
+    const userPicksByWeek = picksByUser.get(userId) || new Map()
+
+    let points = 0
+    let strikes = 0
+    let weekEliminated: number | null = null
+    let pointsAtElimination = 0
+    let firstStrikeWeek: number | null = null
+
+    for (let week = 1; week <= lastCompletedWeek; week++) {
+      const pick = userPicksByWeek.get(week)
+
+      if (!pick) {
+        // Missing pick = strike
+        strikes++
+        if (firstStrikeWeek === null) firstStrikeWeek = week
+      } else if (pick.result === 'win') {
+        points += 3
+      } else if (pick.result === 'draw') {
+        points += 1
+      } else if (pick.result === 'loss') {
+        strikes++
+        if (firstStrikeWeek === null) firstStrikeWeek = week
+      }
+
+      if (strikes >= 2 && weekEliminated === null) {
+        weekEliminated = week
+        pointsAtElimination = points
+      }
+    }
+
+    // If not eliminated, points at elimination = current points
+    if (weekEliminated === null) {
+      pointsAtElimination = points
+    }
+
+    const weeksBeforeFirstStrike = firstStrikeWeek
+      ? firstStrikeWeek - 1
+      : lastCompletedWeek
+
+    return {
+      userId,
+      playerName: displayName,
+      totalPoints: member.points,
+      pointsAtElimination,
+      strikes: member.strikes,
+      weekEliminated,
+      firstStrikeWeek,
+      weeksBeforeFirstStrike,
+    }
+  })
+
+  // Sort for 1st/2nd place: by points at elimination (desc), then fewer strikes
+  const sortedByElimPoints = [...playerData].sort((a, b) => {
+    if (b.pointsAtElimination !== a.pointsAtElimination)
+      return b.pointsAtElimination - a.pointsAtElimination
+    return a.strikes - b.strikes
+  })
+
+  // Sort for Longest Survivor: most weeks before first strike
+  const sortedByLongestSurvivor = [...playerData].sort((a, b) => {
+    if (b.weeksBeforeFirstStrike !== a.weeksBeforeFirstStrike)
+      return b.weeksBeforeFirstStrike - a.weeksBeforeFirstStrike
+    return b.pointsAtElimination - a.pointsAtElimination
+  })
+
+  // Sort for Highest Total Points
+  const sortedByTotalPoints = [...playerData].sort((a, b) => {
+    if (b.totalPoints !== a.totalPoints) return b.totalPoints - a.totalPoints
+    return a.strikes - b.strikes
+  })
+
+  // Build prize winners
+  const prizes: PrizeWinner[] = []
+
+  if (sortedByElimPoints.length > 0) {
+    prizes.push({
+      prize: "first_place",
+      prizeName: "1st Place",
+      icon: "trophy",
+      userId: sortedByElimPoints[0].userId,
+      playerName: sortedByElimPoints[0].playerName,
+      stat: `${sortedByElimPoints[0].pointsAtElimination} pts at elimination`,
+    })
+  }
+
+  if (sortedByElimPoints.length > 1) {
+    prizes.push({
+      prize: "second_place",
+      prizeName: "2nd Place",
+      icon: "medal",
+      userId: sortedByElimPoints[1].userId,
+      playerName: sortedByElimPoints[1].playerName,
+      stat: `${sortedByElimPoints[1].pointsAtElimination} pts at elimination`,
+    })
+  }
+
+  if (sortedByLongestSurvivor.length > 0) {
+    prizes.push({
+      prize: "longest_survivor",
+      prizeName: "Longest Survivor",
+      icon: "shield",
+      userId: sortedByLongestSurvivor[0].userId,
+      playerName: sortedByLongestSurvivor[0].playerName,
+      stat: `${sortedByLongestSurvivor[0].weeksBeforeFirstStrike} weeks without a strike`,
+    })
+  }
+
+  if (sortedByTotalPoints.length > 0) {
+    prizes.push({
+      prize: "highest_total_points",
+      prizeName: "Highest Total Points",
+      icon: "star",
+      userId: sortedByTotalPoints[0].userId,
+      playerName: sortedByTotalPoints[0].playerName,
+      stat: `${sortedByTotalPoints[0].totalPoints} total points`,
+    })
+  }
+
+  // Build final standings (ranked by points at elimination)
+  const standings: FinalStanding[] = sortedByElimPoints.map((p, index) => ({
+    rank: index + 1,
+    userId: p.userId,
+    playerName: p.playerName,
+    pointsAtElimination: p.pointsAtElimination,
+    totalPoints: p.totalPoints,
+    strikes: p.strikes,
+    weekEliminated: p.weekEliminated,
+  }))
+
+  return { isLeagueEnded, prizes, standings }
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getUpcomingGamesWithPicks, makePick, getPicksRemaining } from "@/lib/api"
+import { getUpcomingGamesWithPicks, makePick, getPicksRemaining, getSeasonSummary } from "@/lib/api"
 import type { Game } from "@/types/game"
 import type { Team } from "@/types/team"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -27,7 +27,10 @@ import {
 import type { GameStatus } from "@/types/game"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import Image from "next/image"
+import Link from "next/link"
 import { LeagueGuard } from "@/components/league-guard"
+import type { SeasonSummary } from "@/types/season-summary"
+import { Trophy, Award } from "lucide-react"
 
 function MakePicksContent() {
   const { user } = useAuth()
@@ -46,6 +49,7 @@ function MakePicksContent() {
   const [showTeamsModal, setShowTeamsModal] = useState(false)
   const [gameweekStarted, setGameweekStarted] = useState(false)
   const [picksLocked, setPicksLocked] = useState(false)
+  const [isLeagueEnded, setIsLeagueEnded] = useState(false)
 
   // Weeks for the season
   const weeks = Array.from({ length: 38 }, (_, i) => i + 1)
@@ -93,11 +97,27 @@ function MakePicksContent() {
         } finally {
           setLoadingPicksRemaining(false)
         }
+
       }
     }
 
     fetchData()
   }, [user, currentLeague, currentWeek])
+
+  // Check if league has ended (only once per league, not per week change)
+  useEffect(() => {
+    const checkLeagueEnded = async () => {
+      if (user && currentLeague) {
+        try {
+          const summary = await getSeasonSummary(currentLeague.id)
+          setIsLeagueEnded(summary.isLeagueEnded)
+        } catch (error) {
+          console.error("Error fetching season summary:", error)
+        }
+      }
+    }
+    checkLeagueEnded()
+  }, [user, currentLeague])
 
   const handleTeamSelect = (gameId: number, teamId: number) => {
     // Check if picks are locked due to gameweek starting
@@ -254,6 +274,21 @@ function MakePicksContent() {
         </div>
       </div>
 
+      {/* League Ended Banner */}
+      {isLeagueEnded && (
+        <Alert className="border-4 border-red-600 bg-red-50 dark:bg-red-950">
+          <Award className="h-5 w-5 text-red-600" />
+          <AlertTitle className="font-heading text-red-600">League Over</AlertTitle>
+          <AlertDescription className="space-y-2">
+            <p>This league has ended. All players have been eliminated.</p>
+            <Link href="/results" className="inline-flex items-center gap-2 text-retro-blue hover:underline font-medium">
+              <Trophy className="h-4 w-4" />
+              View Season Summary & Prize Winners
+            </Link>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Custom Modal for Available Teams */}
       {showTeamsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70">
@@ -326,6 +361,22 @@ function MakePicksContent() {
         </Alert>
       )}
 
+      {isLeagueEnded ? (
+        <Card className="border-4 border-black">
+          <CardContent className="text-center py-12">
+            <div className="text-6xl mb-4">
+              <Trophy className="h-16 w-16 mx-auto text-retro-yellow" />
+            </div>
+            <h3 className="text-xl font-heading mb-2">Season Complete</h3>
+            <p className="text-muted-foreground mb-4">
+              Picks are no longer available. Check the results page for the final standings and prize winners.
+            </p>
+            <Link href="/results">
+              <Button variant="pixel">View Season Summary</Button>
+            </Link>
+          </CardContent>
+        </Card>
+      ) : (
       <Card className="border-4 border-black">
         <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
           <div className="flex justify-between items-center">
@@ -509,6 +560,7 @@ function MakePicksContent() {
           )}
         </CardContent>
       </Card>
+      )}
     </div>
   )
 }

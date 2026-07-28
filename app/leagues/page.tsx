@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, Trophy, Calendar, Plus, Clock, CheckCircle } from "lucide-react"
+import { Users, Trophy, Calendar, Plus, Clock, CheckCircle, Award } from "lucide-react"
 import { redirect } from "next/navigation"
 import Image from "next/image"
 
@@ -181,7 +181,16 @@ export default function LeagueSelectionPage() {
 
                       <div className="flex items-center gap-2">
                         <Calendar className="h-5 w-5 text-retro-green" />
-                        <span className="text-sm">{league.isActive ? "Active Season" : "Season Ended"}</span>
+                        {league.isActive ? (
+                          <Badge variant="outline" className="border-2 border-green-600 text-green-600 bg-green-50 dark:bg-green-950">
+                            ACTIVE SEASON
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="border-2 border-red-600 text-red-600 bg-red-50 dark:bg-red-950">
+                            <Award className="h-3 w-3 mr-1" />
+                            SEASON COMPLETE
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="flex items-center gap-2">
@@ -233,9 +242,13 @@ export default function LeagueSelectionPage() {
                           variant="pixel"
                           className="w-full"
                           onClick={() => selectLeague(league, membership)}
-                          disabled={!league.isActive}
                         >
-                          {league.isActive ? "Enter League" : "Season Ended"}
+                          {league.isActive ? "Enter League" : (
+                            <>
+                              <Trophy className="h-4 w-4 mr-2" />
+                              View Results
+                            </>
+                          )}
                         </Button>
                       ) : membership?.status === "pending" ? (
                         <Button variant="outline" className="w-full border-2 border-black bg-transparent" disabled>
@@ -264,7 +277,7 @@ export default function LeagueSelectionPage() {
                               Requesting...
                             </>
                           ) : !league.isActive ? (
-                            "Season Ended"
+                            "Season Complete"
                           ) : (
                             <>
                               <Plus className="h-4 w-4 mr-2" />

@@ -6,6 +6,7 @@ import type { Game } from "@/types/game"
 import type { League, LeagueMembership } from "@/types/league"
 import type { JoinRequest } from "@/types/league"
 import type { ApiResponse } from "@/lib/api-types"
+import type { SeasonSummary } from "@/types/season-summary"
 
 // Base API URL
 const API_BASE = '/api'
@@ -261,6 +262,10 @@ export async function makePick(userId: string, gameId: number, teamId: number, l
 
 export async function getPlayerProfile(playerId: string, leagueId: string): Promise<Player | null> {
   throw new Error('getPlayerProfile not implemented yet')
+}
+
+export async function getSeasonSummary(leagueId: number): Promise<SeasonSummary> {
+  return apiRequest(`/leagues/${leagueId}/season-summary`)
 }
 
 // Invitation API functions

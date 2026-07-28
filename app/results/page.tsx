@@ -3,11 +3,14 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getLeagueResults } from "@/lib/api-client"
+import { getLeagueResults, getSeasonSummary } from "@/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
+import { Trophy, Medal, Shield, Star } from "lucide-react"
+import type { SeasonSummary, PrizeWinner } from "@/types/season-summary"
 
 interface ResultsData {
   users: Array<{
@@ -22,18 +25,66 @@ interface ResultsData {
   completedWeeks: number[]
 }
 
+type TabId = "pick-history" | "season-summary"
+
+const prizeIcons: Record<string, React.ReactNode> = {
+  trophy: <Trophy className="h-8 w-8" />,
+  medal: <Medal className="h-8 w-8" />,
+  shield: <Shield className="h-8 w-8" />,
+  star: <Star className="h-8 w-8" />,
+}
+
+const prizeColors: Record<string, string> = {
+  first_place: "border-retro-yellow bg-yellow-50 dark:bg-yellow-950 text-retro-yellow",
+  second_place: "border-gray-400 bg-gray-50 dark:bg-gray-900 text-gray-500",
+  longest_survivor: "border-retro-green bg-green-50 dark:bg-green-950 text-retro-green",
+  highest_total_points: "border-retro-blue bg-blue-50 dark:bg-blue-950 text-retro-blue",
+}
+
+function PrizeCard({ prize }: { prize: PrizeWinner }) {
+  const colorClass = prizeColors[prize.prize] || "border-black bg-white text-black"
+  const icon = prizeIcons[prize.icon] || <Trophy className="h-8 w-8" />
+
+  return (
+    <Card className={`border-4 ${colorClass}`}>
+      <CardContent className="p-6 text-center">
+        <div className="mb-3">{icon}</div>
+        <h3 className="font-heading text-sm mb-2">{prize.prizeName}</h3>
+        <p className="font-bold text-lg text-foreground mb-1">{prize.playerName}</p>
+        <p className="text-sm text-muted-foreground">{prize.stat}</p>
+        {prize.payout && (
+          <Badge variant="outline" className="mt-2 border-2 border-black">
+            {prize.payout}
+          </Badge>
+        )}
+      </CardContent>
+    </Card>
+  )
+}
+
 function ResultsContent() {
   const { user } = useAuth()
   const { currentLeague } = useLeague()
   const [resultsData, setResultsData] = useState<ResultsData | null>(null)
+  const [seasonSummary, setSeasonSummary] = useState<SeasonSummary | null>(null)
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<TabId>("pick-history")
 
   useEffect(() => {
     const fetchData = async () => {
       if (user && currentLeague) {
         try {
-          const data = await getLeagueResults(currentLeague.id)
-          setResultsData(data)
+          const [resultsRes, summaryRes] = await Promise.all([
+            getLeagueResults(currentLeague.id),
+            getSeasonSummary(currentLeague.id).catch(() => null),
+          ])
+          setResultsData(resultsRes)
+          setSeasonSummary(summaryRes)
+
+          // Default to Season Summary tab when league has ended
+          if (summaryRes?.isLeagueEnded) {
+            setActiveTab("season-summary")
+          }
         } catch (error) {
           console.error("Error fetching results data:", error)
         } finally {
@@ -68,6 +119,171 @@ function ResultsContent() {
     </div>
   )
 
+  const PickHistoryTab = () => (
+    <>
+      {!resultsData || resultsData.completedWeeks.length === 0 ? (
+        <EmptyState />
+      ) : (
+        <div className="relative">
+          {/* Container for horizontal scrolling */}
+          <div className="overflow-x-auto">
+            <div className="min-w-full">
+              {/* Sticky header */}
+              <div className="results-sticky-header bg-background border-b-2 border-black">
+                <div className="flex">
+                  {/* Player name column header */}
+                  <div className="flex-shrink-0 w-48 p-3 font-heading text-left border-r-2 border-black bg-retro-orange text-white">
+                    Player
+                  </div>
+                  {/* Week columns headers */}
+                  {resultsData.completedWeeks.map((week) => (
+                    <div
+                      key={week}
+                      className="flex-shrink-0 w-32 p-3 text-center font-heading border-r-2 border-black bg-retro-orange text-white"
+                    >
+                      Week {week}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Data rows */}
+              <div className="divide-y-2 divide-black">
+                {resultsData.users.map((user) => (
+                  <div key={user.id} className="flex hover:bg-accent/50">
+                    {/* Player name column */}
+                    <div className="flex-shrink-0 w-48 p-3 font-medium border-r-2 border-black bg-background">
+                      {user.name}
+                    </div>
+                    {/* Pick columns */}
+                    {user.picks.map((pick) => (
+                      <div
+                        key={pick.week}
+                        className={`flex-shrink-0 w-32 p-3 text-center text-xs border-r-2 border-black flex items-center justify-center ${getPickCellClassName(
+                          pick.result
+                        )}`}
+                        title={`Week ${pick.week}: ${pick.teamName} (${pick.result || 'No result'})`}
+                      >
+                        <div className="font-medium">{pick.teamName}</div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Legend */}
+          <div className="mt-6 flex flex-wrap gap-4 justify-center">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-green-500 border border-black"></div>
+              <span className="text-sm">Win</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-yellow-500 border border-black"></div>
+              <span className="text-sm">Draw</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-red-500 border border-black"></div>
+              <span className="text-sm">Loss</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-gray-100 dark:bg-gray-800 border border-black"></div>
+              <span className="text-sm">No Pick</span>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  const SeasonSummaryTab = () => {
+    if (!seasonSummary) {
+      return (
+        <div className="text-center py-16">
+          <div className="text-6xl mb-4">📊</div>
+          <h3 className="text-xl font-heading mb-2">Season Summary Not Available</h3>
+          <p className="text-muted-foreground">
+            The season summary will be available once the league has ended.
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="space-y-8">
+        {/* Prize Winners */}
+        {seasonSummary.prizes.length > 0 && (
+          <div>
+            <h3 className="text-lg font-heading mb-4 text-center">
+              {seasonSummary.isLeagueEnded ? "Prize Winners" : "Current Prize Leaders"}
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {seasonSummary.prizes.map((prize) => (
+                <PrizeCard key={prize.prize} prize={prize} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Final Standings Table */}
+        {seasonSummary.standings.length > 0 && (
+          <div>
+            <h3 className="text-lg font-heading mb-4 text-center">
+              {seasonSummary.isLeagueEnded ? "Final Standings" : "Current Standings"}
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-retro-orange text-white border-b-2 border-black">
+                    <th className="p-3 text-left font-heading border-r-2 border-black">Rank</th>
+                    <th className="p-3 text-left font-heading border-r-2 border-black">Player</th>
+                    <th className="p-3 text-center font-heading border-r-2 border-black">Pts (Elim)</th>
+                    <th className="p-3 text-center font-heading border-r-2 border-black">Total Pts</th>
+                    <th className="p-3 text-center font-heading border-r-2 border-black">Strikes</th>
+                    <th className="p-3 text-center font-heading">Week Out</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y-2 divide-black">
+                  {seasonSummary.standings.map((player) => (
+                    <tr key={player.userId} className="hover:bg-accent/50">
+                      <td className="p-3 border-r-2 border-black">
+                        <div className="flex items-center gap-2">
+                          {player.rank === 1 && <Trophy className="h-4 w-4 text-retro-yellow" />}
+                          {player.rank === 2 && <Medal className="h-4 w-4 text-gray-400" />}
+                          <span className="font-heading">#{player.rank}</span>
+                        </div>
+                      </td>
+                      <td className="p-3 font-medium border-r-2 border-black">{player.playerName}</td>
+                      <td className="p-3 text-center border-r-2 border-black font-bold">{player.pointsAtElimination}</td>
+                      <td className="p-3 text-center border-r-2 border-black">{player.totalPoints}</td>
+                      <td className="p-3 text-center border-r-2 border-black">
+                        <span className={player.strikes >= 2 ? "text-red-500 font-bold" : ""}>
+                          {player.strikes}
+                        </span>
+                      </td>
+                      <td className="p-3 text-center">
+                        {player.weekEliminated ? (
+                          <Badge variant="destructive" className="border-2 border-black">
+                            Week {player.weekEliminated}
+                          </Badge>
+                        ) : (
+                          <Badge variant="success" className="border-2 border-black">
+                            Active
+                          </Badge>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -81,11 +297,44 @@ function ResultsContent() {
         </div>
       </div>
 
-      <Card>
+      {/* Tab Navigation */}
+      <div className="flex border-b-4 border-black">
+        <button
+          onClick={() => setActiveTab("pick-history")}
+          className={`px-6 py-3 font-heading text-sm border-2 border-black border-b-0 transition-colors ${
+            activeTab === "pick-history"
+              ? "bg-retro-orange text-white -mb-[4px] border-b-4 border-b-retro-orange"
+              : "bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
+        >
+          Pick History
+        </button>
+        <button
+          onClick={() => setActiveTab("season-summary")}
+          className={`px-6 py-3 font-heading text-sm border-2 border-black border-b-0 border-l-0 transition-colors flex items-center gap-2 ${
+            activeTab === "season-summary"
+              ? "bg-retro-orange text-white -mb-[4px] border-b-4 border-b-retro-orange"
+              : "bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
+          }`}
+        >
+          <Trophy className="h-4 w-4" />
+          Season Summary
+        </button>
+      </div>
+
+      {/* Tab Content */}
+      <Card className="border-4 border-black">
         <CardHeader>
-          <CardTitle>Pick Results by Week</CardTitle>
+          <CardTitle>
+            {activeTab === "pick-history" ? "Pick Results by Week" : "Season Summary"}
+          </CardTitle>
           <CardDescription>
-            Complete history of all players' picks and their outcomes
+            {activeTab === "pick-history"
+              ? "Complete history of all players' picks and their outcomes"
+              : seasonSummary?.isLeagueEnded
+                ? "Final prize winners and standings for this season"
+                : "Current prize leaders and standings"
+            }
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -98,78 +347,10 @@ function ResultsContent() {
               <Skeleton className="h-12 w-full" />
               <Skeleton className="h-12 w-full" />
             </div>
-          ) : !resultsData || resultsData.completedWeeks.length === 0 ? (
-            <EmptyState />
+          ) : activeTab === "pick-history" ? (
+            <PickHistoryTab />
           ) : (
-            <div className="relative">
-              {/* Container for horizontal scrolling */}
-              <div className="overflow-x-auto">
-                <div className="min-w-full">
-                  {/* Sticky header */}
-                  <div className="results-sticky-header bg-background border-b-2 border-black">
-                    <div className="flex">
-                      {/* Player name column header */}
-                      <div className="flex-shrink-0 w-48 p-3 font-heading text-left border-r-2 border-black bg-retro-orange text-white">
-                        Player
-                      </div>
-                      {/* Week columns headers */}
-                      {resultsData.completedWeeks.map((week) => (
-                        <div
-                          key={week}
-                          className="flex-shrink-0 w-32 p-3 text-center font-heading border-r-2 border-black bg-retro-orange text-white"
-                        >
-                          Week {week}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Data rows */}
-                  <div className="divide-y-2 divide-black">
-                    {resultsData.users.map((user) => (
-                      <div key={user.id} className="flex hover:bg-accent/50">
-                        {/* Player name column */}
-                        <div className="flex-shrink-0 w-48 p-3 font-medium border-r-2 border-black bg-background">
-                          {user.name}
-                        </div>
-                        {/* Pick columns */}
-                        {user.picks.map((pick) => (
-                          <div
-                            key={pick.week}
-                            className={`flex-shrink-0 w-32 p-3 text-center text-xs border-r-2 border-black flex items-center justify-center ${getPickCellClassName(
-                              pick.result
-                            )}`}
-                            title={`Week ${pick.week}: ${pick.teamName} (${pick.result || 'No result'})`}
-                          >
-                            <div className="font-medium">{pick.teamName}</div>
-                          </div>
-                        ))}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Legend */}
-              <div className="mt-6 flex flex-wrap gap-4 justify-center">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-green-500 border border-black"></div>
-                  <span className="text-sm">Win</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-yellow-500 border border-black"></div>
-                  <span className="text-sm">Draw</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-red-500 border border-black"></div>
-                  <span className="text-sm">Loss</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-gray-100 dark:bg-gray-800 border border-black"></div>
-                  <span className="text-sm">No Pick</span>
-                </div>
-              </div>
-            </div>
+            <SeasonSummaryTab />
           )}
         </CardContent>
       </Card>
