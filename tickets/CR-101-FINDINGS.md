@@ -1,7 +1,10 @@
 # CR-101 — Architecture & Backend-Language Spike: Consolidated Findings
 
-**Status**: Research complete (AC1–AC4) · Synthesis draft (AC5–AC6) · **AC7 go/no-go OPEN (team)**
-**Prepared**: 2026-08-05
+**Status**: Research complete (AC1–AC4) · AC7 go/no-go **DECIDED: GO** — see the
+2026-08-06 scope-update note after AC7 below; the decision recorded inline in AC7
+(read-endpoint pilot, contract option iii) was **superseded**, not replaced by a
+different answer to the same question.
+**Prepared**: 2026-08-05 · **Updated**: 2026-08-06
 
 This is the executive synthesis. The detailed, cited research lives in four companion files:
 - **AC1 — Cost & Hosting**: `CR-101-FINDINGS-A.md`
@@ -10,6 +13,16 @@ This is the executive synthesis. The detailed, cited research lives in four comp
 - **AC2 — Repo Topology & CI**: `CR-101-FINDINGS-D.md`
 
 All four were spot-checked against the actual code; their load-bearing claims hold.
+
+> **Scope note (2026-08-06): read below before treating AC7's recorded answer as the
+> ceiling of what's planned.** AC7 originally recorded a narrow pilot (one read
+> endpoint, contract option iii). In follow-up discussion, that decision was
+> **expanded**: build the full Python backend, run it in parallel with the existing
+> Next.js/TS backend, validate parity, then deprecate the TS backend entirely. The
+> pilot-scoped classifications below (e.g. AC4's route/`lib/db.ts` split) were
+> re-audited for the full-migration scope in `CR-105-FINDINGS.md` — read that file
+> for the current port list, not the pilot-scoped tables here. Kept in place below
+> for the historical record of how the decision was reached. Full detail after AC7.
 
 ---
 
@@ -181,3 +194,39 @@ the goal is "does the typed FE/BE-split architecture work for us," the scoring p
 does not answer it; move one read endpoint (scoreboard or season-summary) over HTTP
 with a real Pydantic→OpenAPI→TS contract instead. Defer the full split (static
 frontend, moving interactive routes) to a later decision after the pilot proves out.
+
+---
+
+## Scope update (2026-08-06): pilot expanded to full migration
+
+The decision recorded above (read-endpoint pilot, contract option iii) was **not
+the final scope.** In follow-up discussion after this document was written, the team
+expanded the decision: **build the full Python backend, run it in parallel with the
+existing Next.js/TS backend, validate parity, then deprecate the TS backend
+entirely.** There is no remaining "pilot-only" phase — every route and most of
+`lib/db.ts` is headed to Python, not just one read endpoint.
+
+What carries forward from the research above unchanged:
+- **AC1 (cost)** and **AC2 (topology)** — hosting and repo-layout findings don't
+  depend on pilot-vs-full scope.
+- **AC3 (contract mechanism)** — Pydantic → OpenAPI → generated TS types, contract
+  option iii, still the mechanism; it now applies to the whole route surface instead
+  of one endpoint.
+- **The auth-boundary decision** — direct JWT verification in FastAPI for browser
+  routes, API-key for cron/service-to-service — already decided, unchanged.
+
+What does **not** carry forward as-written:
+- **AC4's route/`lib/db.ts` classification table** (`CR-101-FINDINGS-B.md` §1–2) —
+  most `STAYS-IN-NEXTJS` verdicts there were conditioned on Next.js keeping the
+  interactive backend under a pilot. That condition no longer holds. **The current
+  port list is `CR-105-FINDINGS.md` Table 1**, not the table in `-B.md`.
+- The pilot-vs-architecture tension named in "The pilot question" section above is
+  moot — a full migration answers both halves (ops/people *and* the typed FE/BE
+  contract) by construction, so there's no longer a choice to make between them.
+
+`CR-105-full-migration-audit.md` / `CR-105-FINDINGS.md` is the Phase 0 artifact for
+this expanded scope — full route/function reclassification, duplicate-logic list,
+cut list, and Pydantic model list, including a 2026-08-06 user-flow review that
+dropped the join-request feature and `SportsLeagueOption`, added two new models
+(picks-remaining, player profile), and surfaced a new season-rollover capability not
+previously scoped anywhere.
