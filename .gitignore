@@ -26,4 +26,9 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# python (api/)
+__pycache__/
+*.pyc
+.venv/
+
 .claude
