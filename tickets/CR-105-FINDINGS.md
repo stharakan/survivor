@@ -393,3 +393,75 @@ today, TS or otherwise, so it wasn't in the original port inventory.
   Points-3 scope rather than re-deriving every nested join shape by hand. Flagged
   explicitly as lower-confidence rows rather than silently presented at the same
   confidence as the rest of the table.
+
+---
+
+## Addendum 2 — Phase 1 open-items resolution (2026-08-06)
+
+Decisions made against the open items `CR-105-PHASE1-REPORT.md` raised for review.
+Team-reviewed; code updated where the decision changed a shipped Phase 1 artifact.
+
+- **`PlayerProfile`/picks split — DECIDED, reversed from Phase 1's judgment call.**
+  Phase 1 folded `picks: List[Pick]` into `PlayerProfile` so `app/player/[id]/page.tsx`
+  could make one call instead of two (see original Table 4 Addendum entry above).
+  Reversed: a profile is **public** within a league (any member can view any other
+  member's `id/name/teamName/points/strikes/rank/totalWeeksInSeason`), but a user's
+  pick history is **private** — only the pick-owner should see it. Bundling `picks`
+  into the public-profile response would have exposed every member's full pick
+  history to every other member via `app/player/[id]`, exactly the class of gap
+  Table 1 5.4 already named ("today's `app/api/picks/route.ts` has no auth check at
+  all — trusts a client-supplied `user_id`"). **`app/models/player_profile.py`
+  updated**: `picks` field removed. Phase 2 must build `GET /picks` (or its Python
+  equivalent) with a hard requester-must-equal-queried-user check (self, or a
+  league-admin override if that's wanted later) — this is not optional cleanup, it's
+  the actual privacy boundary the split depends on. `app/profile/page.tsx` (self)
+  keeps calling both profile and picks; `app/player/[id]/page.tsx` (viewing someone
+  else) must stop calling picks for another user entirely once Phase 2 routes exist.
+
+- **Season rollover — DEFERRED, not dropped.** The Addendum's in-place-rollover
+  design (archived `seasonArchive` field, reset counters in place) and Phase 1's
+  `start_new_season`/`archive_summary` implementation stay as already written in
+  `app/db/leagues.py`, but this is explicitly **not** part of Phase 2's build
+  target. No season boundary is imminent; revisit when one actually approaches.
+  Worst case, come back and rework the schema then — nothing downstream depends on
+  it yet.
+
+- **`username` drift — DECIDED (not just "recommended"), now a confirmed 4th drift
+  fix.** `InvitationCreatorSummary.username`, `InvitationAcceptanceInfoCreator.username`,
+  and the password-reset family's `PasswordResetUserSummary.username`/
+  `PasswordResetCreatorSummary.username` are correctly `Optional[str] = None` in the
+  shipped Phase 1 code (`app/models/invitation.py`, `app/models/password_reset.py`)
+  — no code change needed, this just promotes the Phase 1 report's "recommend
+  treating this as a fourth drift-fix" from a suggestion to a decision. Table 4
+  should be read as if `InvitationCreatorSummary`/`InvitationAcceptanceInfoCreator`/
+  `PasswordResetUserSummary`/`PasswordResetCreatorSummary` carry the same
+  drift-fixed status as the `Pick.result` and `League.id`/`createdBy` rows.
+
+- **UTC-only date matching — CONFIRMED as parity, not a gap.** The deploy target
+  (Heroku, per `README.md`'s "Production Deployment to Heroku" section and
+  `.env.example`) runs its dynos in UTC by default, and no `TZ` config var is set
+  anywhere in this repo (`.env.example`, `Procfile`, or elsewhere) to override that.
+  `lib/game-updater.ts`'s `date-fns format()` calls (`lib/game-updater.ts:221,224,470-471`)
+  therefore already run in UTC in production today, same as `app/db/game_updater.py`'s
+  UTC-only port. No behavior change needed — this was aim-for-parity by construction,
+  just not confirmed against the actual deploy target until now.
+
+- **`League.sportsLeague` — DECIDED: keep the field, fixed value for now.** Not
+  dropped, not made a free-form user choice. Product direction is EPL-only;
+  `sportsLeague` stays a plain `str` on the model (already how `app/models/league.py`
+  has it) with an effectively fixed value (`"EPL"`) rather than exposing the
+  multi-sport picker `SportsLeagueOption` used to power. Expanding it back into a
+  real user-selectable field is a future-phase product decision, not a Phase 2
+  migration concern — no further code change needed now.
+
+- **Validation — ELEVATED to a required Phase 2 deliverable, not an optional
+  follow-up.** Two validation gaps carry forward as must-do, not nice-to-have:
+  (1) the Table 2 golden-fixture test recommendation — a fixed set of
+  `{startTime, status, current_game_week, current_pick_week}` inputs run through
+  both the TS `lib/game-utils.ts` functions and their Python ports
+  (`computeGameStatus`, `canPickFromGame`, `canChangeExistingPick`,
+  `hasGameweekStarted`, `arePicksLocked`), asserting identical booleans — the
+  mechanism that actually keeps the two languages in sync, not "keep them the same
+  by eye"; and (2) exercising the Phase 1 `app/db/` layer against a real MongoDB
+  instance, which Phase 1 never had access to do. Both must land before or
+  alongside Phase 2's route build, not after.

@@ -177,6 +177,22 @@ async def accept_invitation(token: str, user_id: str, team_name: str) -> dict:
     return {"success": True, "membership": membership}
 
 
+async def get_invitation_league_id(invitation_id: str) -> Optional[str]:
+    """NEW in Phase 2 -- needed to fix the Table 1 6.7 authorization gap on
+    `DELETE /invitations/{invitationId}` (the TS route's own comment admits
+    "any authenticated user for now"; see routers/invitations.py for the real
+    admin-of-owning-league check this backs). Not a port of anything in
+    lib/db.ts -- that file never needed this lookup because the route never
+    checked ownership."""
+    db = get_database()
+    doc = await db[Collections.LEAGUE_INVITATIONS].find_one(
+        {"_id": ObjectId(invitation_id)}, {"leagueId": 1}
+    )
+    if not doc:
+        return None
+    return str(doc["leagueId"])
+
+
 async def revoke_invitation(invitation_id: str) -> bool:
     """Port of lib/db.ts:1541-1555."""
     db = get_database()

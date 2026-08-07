@@ -30,6 +30,20 @@ def team_from_doc(doc: dict) -> Team:
 
 
 def game_from_doc(doc: dict, *, user_pick: Optional[GameUserPick] = None) -> Game:
+    """NOTE (found during Phase 2's live-Mongo verification, CR-105-FINDINGS.md
+    Addendum 2's "must-do" item): `startTime` now goes through `to_iso()`, same
+    as `date`, instead of being passed through raw. In practice
+    `scripts/import-epl-2025-fixtures.ts:181` only ever writes `date` as a
+    native BSON Date at fixture-import time (`startTime` is unset until
+    `game_updater.py`'s `_update_game_in_database` first populates it as an
+    already-ISO string from the Football Data API's `utcDate`) -- so a raw
+    `datetime` in `startTime` shouldn't occur on real data today. Still: a
+    Pydantic model with `startTime: Optional[str]` raises a hard
+    `ValidationError` the moment it does (unlike the TS original, where
+    `JSON.stringify` silently coerces a `Date` to its ISO string for free) --
+    this is strictly more defensive for zero behavior change on the string
+    case, not a speculative fix.
+    """
     return Game(
         id=doc["id"],
         week=doc["week"],
@@ -39,7 +53,7 @@ def game_from_doc(doc: dict, *, user_pick: Optional[GameUserPick] = None) -> Gam
         awayScore=doc.get("awayScore"),
         status=doc["status"],
         date=to_iso(doc.get("date")),
-        startTime=doc.get("startTime"),
+        startTime=to_iso(doc.get("startTime")),
         sportsLeague=doc.get("sportsLeague", ""),
         season=doc.get("season", ""),
         userPick=user_pick,

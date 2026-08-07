@@ -144,6 +144,32 @@ async def get_league_member(league_id: str, member_id: str) -> Optional[LeagueMe
     return _membership_from_agg(docs[0])
 
 
+async def get_membership_for_user(league_id: str, user_id: str) -> Optional[LeagueMembership]:
+    """NEW in Phase 2 -- port of lib/auth-utils.ts's private
+    `getUserLeagueMembership` helper (lib/auth-utils.ts:62-122), which the TS
+    app inlines its own raw aggregation + manual object-shaping for rather than
+    reusing lib/db.ts's `getLeagueMember` (that one looks up by membership
+    `_id`, not by `userId`+`leagueId`). Needed by Phase 2's authorization
+    context (`app/core/auth_deps.py::get_authorization_context`) -- the Python
+    equivalent of `verifyAuthToken`+`getAuthorizationContext`'s membership
+    lookup. Reuses the shared `_membership_from_agg`/`league_from_doc` shaping
+    instead of re-duplicating the TS original's second, slightly different
+    inline object literal (lib/auth-utils.ts:92-117) -- same underlying shape,
+    factored through the one helper already used everywhere else in this
+    module, not a behavior change.
+    """
+    db = get_database()
+    docs = await db[Collections.LEAGUE_MEMBERSHIPS].aggregate([
+        {"$match": {"userId": ObjectId(user_id), "leagueId": ObjectId(league_id)}},
+        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
+        {"$unwind": "$league"},
+        {"$limit": 1},
+    ]).to_list(length=1)
+    if not docs:
+        return None
+    return _membership_from_agg(docs[0])
+
+
 async def update_member_status(
     league_id: str,
     member_id: str,

@@ -316,6 +316,8 @@ FE/BE-separation experiment.
 **Timeline**: 2-3 days
 **Status**: Proposed
 
+Game week end -> push data down to dev
+
 **User Story**: As a developer, I want a sandbox league tied to a real, current
 season so that I can simulate real events (game results, scoring, eliminations,
 pick locking) while testing.

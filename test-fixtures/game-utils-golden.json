@@ -1,0 +1,112 @@
+{
+  "_comment": "Golden fixtures for the lib/game-utils.ts <-> api/app/utils/game_utils.py parity test required by CR-105-FINDINGS.md Table 2 / Addendum 2. Both lib/__tests__/game-utils-parity.test.ts (TS, via jest fake timers) and api/tests/test_game_utils_parity.py (Python, via an injectable `now`) load this same file and assert identical booleans against the SAME `now` reference instant. If you change the pick-lock rules in either lib/game-utils.ts or api/app/utils/game_utils.py, add/update cases here so both suites re-verify the other language wasn't left behind.",
+  "now": "2026-01-15T12:00:00.000Z",
+  "gameStatusCases": [
+    {
+      "name": "not started - starts in the future",
+      "game": { "startTime": "2026-01-15T13:00:00.000Z", "status": "not_started" },
+      "expectStatus": "not_started",
+      "expectCanPick": true,
+      "expectCanChange": true
+    },
+    {
+      "name": "in progress - started 1h ago, within 2.5h buffer",
+      "game": { "startTime": "2026-01-15T11:00:00.000Z", "status": "not_started" },
+      "expectStatus": "in_progress",
+      "expectCanPick": false,
+      "expectCanChange": false
+    },
+    {
+      "name": "completed by time - started 3h ago, past 2.5h buffer",
+      "game": { "startTime": "2026-01-15T09:00:00.000Z", "status": "not_started" },
+      "expectStatus": "completed",
+      "expectCanPick": false,
+      "expectCanChange": false
+    },
+    {
+      "name": "completed by stored status trumps a future startTime",
+      "game": { "startTime": "2026-01-16T00:00:00.000Z", "status": "completed" },
+      "expectStatus": "completed",
+      "expectCanPick": false,
+      "expectCanChange": true
+    },
+    {
+      "name": "no time info at all - falls back to stored status",
+      "game": { "status": "not_started" },
+      "expectStatus": "not_started",
+      "expectCanPick": true,
+      "expectCanChange": true
+    },
+    {
+      "name": "exactly at start time boundary (now == startTime)",
+      "game": { "startTime": "2026-01-15T12:00:00.000Z", "status": "not_started" },
+      "expectStatus": "not_started",
+      "expectCanPick": true,
+      "expectCanChange": true
+    },
+    {
+      "name": "exactly at the 2.5h completed boundary (now == startTime + 2.5h)",
+      "game": { "startTime": "2026-01-15T09:30:00.000Z", "status": "not_started" },
+      "expectStatus": "in_progress",
+      "expectCanPick": false,
+      "expectCanChange": false
+    },
+    {
+      "name": "date field fallback when startTime is absent",
+      "game": { "date": "2026-01-15T11:00:00.000Z", "status": "not_started" },
+      "expectStatus": "in_progress",
+      "expectCanPick": false,
+      "expectCanChange": false
+    }
+  ],
+  "gameweekStartedCases": [
+    {
+      "name": "pick week == game week, both positive -> started",
+      "league": { "current_pick_week": 3, "current_game_week": 3 },
+      "targetWeek": null,
+      "expect": true
+    },
+    {
+      "name": "pick week != game week -> not started",
+      "league": { "current_pick_week": 2, "current_game_week": 3 },
+      "targetWeek": null,
+      "expect": false
+    },
+    {
+      "name": "both zero -> not started (pickWeek > 0 fails)",
+      "league": { "current_pick_week": 0, "current_game_week": 0 },
+      "targetWeek": null,
+      "expect": false
+    },
+    {
+      "name": "targetWeek <= gameWeek, gameWeek > 0 -> started",
+      "league": { "current_pick_week": 1, "current_game_week": 3 },
+      "targetWeek": 2,
+      "expect": true
+    },
+    {
+      "name": "targetWeek > gameWeek -> not started",
+      "league": { "current_pick_week": 1, "current_game_week": 3 },
+      "targetWeek": 5,
+      "expect": false
+    },
+    {
+      "name": "targetWeek provided but gameWeek is 0 -> not started",
+      "league": { "current_pick_week": 0, "current_game_week": 0 },
+      "targetWeek": 3,
+      "expect": false
+    },
+    {
+      "name": "null/missing week fields treated as 0 -> not started",
+      "league": { "current_pick_week": null, "current_game_week": null },
+      "targetWeek": null,
+      "expect": false
+    }
+  ],
+  "picksLockedCases": [
+    { "name": "existing pick + gameweek started -> locked", "hasExistingPick": true, "gameweekStarted": true, "expect": true },
+    { "name": "existing pick + gameweek not started -> unlocked", "hasExistingPick": true, "gameweekStarted": false, "expect": false },
+    { "name": "no existing pick + gameweek started -> unlocked (first pick allowed)", "hasExistingPick": false, "gameweekStarted": true, "expect": false },
+    { "name": "no existing pick + gameweek not started -> unlocked", "hasExistingPick": false, "gameweekStarted": false, "expect": false }
+  ]
+}

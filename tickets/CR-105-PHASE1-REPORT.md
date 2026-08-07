@@ -195,6 +195,31 @@ cut list / dev-tooling exception, per Table 1's own dispositions.
   or removing the field from the contract, both of which are product/Phase 2
   decisions.
 
+## Open-items resolution (2026-08-06)
+
+The judgment calls and gaps flagged above were reviewed; decisions recorded in
+`CR-105-FINDINGS.md` Addendum 2. Summary:
+
+- **`PlayerProfile`/picks split reversed** — `picks` removed from
+  `app/models/player_profile.py`. A profile is public within a league; a user's
+  pick history is private (self-only). Phase 2 must enforce that as a hard
+  requester-must-equal-queried-user check on the picks endpoint, not just as a
+  frontend convention.
+- **Season rollover deferred** — `start_new_season`/`seasonArchive` code stays as
+  written, but is out of Phase 2's build target. No season boundary is imminent.
+- **`username` drift confirmed as a real (4th) drift fix**, not just a
+  recommendation — no code change needed, already `Optional[str]` in the shipped
+  models.
+- **UTC-only date matching confirmed as parity** — Heroku dynos default to UTC, no
+  `TZ` override anywhere in the repo, so `app/db/game_updater.py`'s UTC-only
+  matching already matches production `lib/game-updater.ts` behavior.
+- **`League.sportsLeague` stays, fixed to `"EPL"` for now** — not dropped, not a
+  free-form field yet.
+- **Validation elevated to a required Phase 2 deliverable**: the Table 2
+  golden-fixture parity test (TS vs. Python `game-utils` functions) and running
+  the `app/db/` layer against a real MongoDB instance are both must-do before/alongside
+  the route build, not optional follow-up.
+
 ## What Phase 2 needs to know before starting
 
 - Build routes in Rank 1→7 order on top of this layer, matching
