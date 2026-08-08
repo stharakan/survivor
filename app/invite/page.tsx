@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useEffect, useState, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
 import type { InvitationAcceptanceInfo } from "@/types/invitation"
@@ -15,13 +15,18 @@ import { Users, Trophy, Calendar, UserPlus, AlertCircle, CheckCircle, XCircle } 
 import Image from "next/image"
 import Link from "next/link"
 
-export default function InvitationPage() {
-  const params = useParams()
-  const token = params.token as string
+// CR-106 AC4: was app/invite/[token]/page.tsx. Static export requires every
+// dynamic route segment to be resolvable via generateStaticParams() at build
+// time, which is impossible for a token that doesn't exist until runtime.
+// Moved to a query-string route (`/invite?token=...`) -- no invite links were
+// circulating yet, so there was no already-issued path-style link to preserve.
+function InvitationContent() {
+  const searchParams = useSearchParams()
+  const token = searchParams.get("token") ?? ""
   const router = useRouter()
   const { user, loading: authLoading } = useAuth()
   const { refreshLeagues } = useLeague()
-  
+
   const [invitation, setInvitation] = useState<InvitationAcceptanceInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [teamName, setTeamName] = useState("")
@@ -35,7 +40,7 @@ export default function InvitationPage() {
       try {
         const response = await fetch(`/api/invite/${token}`)
         const data = await response.json()
-        
+
         if (data.success) {
           setInvitation(data.data)
           // Set default team name if user is logged in
@@ -55,20 +60,23 @@ export default function InvitationPage() {
 
     if (token) {
       fetchInvitation()
+    } else {
+      setError('Invitation link is missing a token')
+      setLoading(false)
     }
   }, [token, user])
 
   const handleAcceptInvitation = async () => {
     if (!user || !invitation) return
-    
+
     if (!teamName.trim()) {
       setError('Please enter a team name')
       return
     }
-    
+
     setAccepting(true)
     setError(null)
-    
+
     try {
       const response = await fetch(`/api/invite/${token}/accept`, {
         method: 'POST',
@@ -77,9 +85,9 @@ export default function InvitationPage() {
         },
         body: JSON.stringify({ teamName: teamName.trim() }),
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setSuccess(true)
         await refreshLeagues()
@@ -122,7 +130,7 @@ export default function InvitationPage() {
             <span className="text-2xl md:text-3xl text-retro-red block">INVITATION ERROR</span>
           </h1>
         </div>
-        
+
         <Card className="border-4 border-red-500 shadow-pixel max-w-md mx-auto">
           <CardHeader className="bg-red-500 text-white border-b-4 border-black">
             <CardTitle className="flex items-center gap-2">
@@ -135,7 +143,7 @@ export default function InvitationPage() {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
-            
+
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-4">
                 The invitation link may have expired or is no longer valid.
@@ -171,7 +179,7 @@ export default function InvitationPage() {
             <span className="text-2xl md:text-3xl text-retro-green block">SUCCESS!</span>
           </h1>
         </div>
-        
+
         <Card className="border-4 border-green-500 shadow-pixel max-w-md mx-auto">
           <CardHeader className="bg-green-500 text-white border-b-4 border-black">
             <CardTitle className="flex items-center gap-2">
@@ -238,8 +246,8 @@ export default function InvitationPage() {
                 <Alert variant="destructive" className="border-2 border-black">
                   <AlertCircle className="h-4 w-4" />
                   <AlertDescription>
-                    {invitation.invitation.isExpired 
-                      ? "This invitation has expired" 
+                    {invitation.invitation.isExpired
+                      ? "This invitation has expired"
                       : invitation.invitation.isAtMaxUses
                       ? "This invitation has reached its maximum uses"
                       : "This invitation is no longer valid"
@@ -253,12 +261,12 @@ export default function InvitationPage() {
                   You need to sign in or create an account to join this league.
                 </p>
                 <div className="grid grid-cols-2 gap-2">
-                  <Link href={`/login?redirect=${encodeURIComponent(`/invite/${token}`)}`}>
+                  <Link href={`/login?redirect=${encodeURIComponent(`/invite?token=${token}`)}`}>
                     <Button variant="outline" className="w-full border-2 border-black bg-transparent">
                       Sign In
                     </Button>
                   </Link>
-                  <Link href={`/register?redirect=${encodeURIComponent(`/invite/${token}`)}`}>
+                  <Link href={`/register?redirect=${encodeURIComponent(`/invite?token=${token}`)}`}>
                     <Button variant="pixel" className="w-full">
                       Sign Up
                     </Button>
@@ -319,8 +327,8 @@ export default function InvitationPage() {
               <Alert variant="destructive" className="border-2 border-black">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  {invitation.invitation.isExpired 
-                    ? "This invitation has expired" 
+                  {invitation.invitation.isExpired
+                    ? "This invitation has expired"
                     : invitation.invitation.isAtMaxUses
                     ? "This invitation has reached its maximum uses"
                     : "This invitation is no longer valid"
@@ -348,9 +356,9 @@ export default function InvitationPage() {
                   </Alert>
                 )}
 
-                <Button 
-                  variant="pixel" 
-                  className="w-full" 
+                <Button
+                  variant="pixel"
+                  className="w-full"
                   onClick={handleAcceptInvitation}
                   disabled={accepting || !teamName.trim()}
                 >
@@ -370,5 +378,18 @@ export default function InvitationPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function InvitationPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-retro-orange"></div>
+        <p className="font-pixel text-lg">Loading invitation...</p>
+      </div>
+    }>
+      <InvitationContent />
+    </Suspense>
   )
 }

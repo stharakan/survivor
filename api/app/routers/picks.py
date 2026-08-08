@@ -90,7 +90,15 @@ async def create_pick_route(body: CreatePickRequest, request: Request) -> dict:
         if not can_pick_from_game(game_time_info):
             raise ApiError("Pick failed because game has already started", 400)
 
-    pick = await create_pick(user_id, body.leagueId, body.gameId, body.teamId, body.week)
+    try:
+        pick = await create_pick(user_id, body.leagueId, body.gameId, body.teamId, body.week)
+    except ValueError as e:
+        # Covers the new CR-106 AC7 team-reuse-limit check as well as the
+        # pre-existing "Game or team not found" case -- both used to fall
+        # through to the generic 500 handler with no message; matches the
+        # ValueError -> ApiError(400) convention used elsewhere in this file
+        # (e.g. the pick-lock checks above) and in app/routers/members.py.
+        raise ApiError(str(e), 400)
     return ok(pick.model_dump())
 
 

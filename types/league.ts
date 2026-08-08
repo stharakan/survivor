@@ -34,21 +34,14 @@ export type LeagueMembership = {
   status: "active" | "pending" | "rejected"
 }
 
-export type JoinRequest = {
-  id: number
-  league: League
-  user: {
-    id: number
-    username: string
-    email: string
-  }
-  teamName: string
-  message?: string
-  status: "pending" | "approved" | "rejected"
-  requestedAt: string
-  reviewedAt?: string
-  reviewedBy?: number
-}
+// NOTE: JoinRequest used to live here. Dropped (CR-105-FINDINGS.md Table 3/4,
+// decided 2026-08-06): the request-to-join flow it modeled had no backing
+// lib/db.ts function -- getJoinRequests/approveJoinRequest/rejectJoinRequest/
+// requestToJoinLeague were permanently-stubbed or hardcoded-empty
+// (lib/api-client.ts, pre-CR-106) and there is no Python route for it either.
+// Registration is invite-only; removed under CR-106 along with its UI
+// (app/admin/requests/[id], the admin "Requests" tab, and the "Ask to Join"
+// button on app/leagues) rather than ported as dead weight.
 
 export type SportsLeagueOption = {
   id: string

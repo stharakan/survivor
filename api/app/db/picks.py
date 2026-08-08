@@ -31,8 +31,29 @@ async def create_pick(user_id: str, league_id: str, game_id: int, team_id: int, 
     and must NOT trust a client-supplied user id, per the auth gap carried forward
     in CR-105-FINDINGS.md 5.4 (today's app/api/picks/route.ts has no auth check at
     all).
+
+    CR-106 AC7: server-side team-reuse check. The survivor rule is each team may
+    be picked at most twice a season (already enforced on *read* by
+    `/picks/remaining`'s `max(0, 2 - pickCount)`), but nothing ever enforced it on
+    *write* -- `isTeamUsed` (app/make-picks/page.tsx) is a UI-only guard, trivially
+    bypassed with a direct POST. This carries forward from the original TS
+    `createPick` (lib/db.ts:762-870), which had the same gap; fixed here rather
+    than ported as-is, per the ticket.
     """
     db = get_database()
+
+    # Exclude the pick being replaced for `week` itself -- this is an upsert
+    # keyed on (user, league, week) below, so switching *away from* this team
+    # for `week`, or re-submitting the same team for `week`, must not count as
+    # an extra use.
+    existing_uses = await db[Collections.PICKS].count_documents({
+        "userId": ObjectId(user_id),
+        "leagueId": ObjectId(league_id),
+        "teamId": team_id,
+        "week": {"$ne": week},
+    })
+    if existing_uses >= 2:
+        raise ValueError("This team has already been picked twice this season")
 
     game_docs = await db[Collections.GAMES].aggregate([
         {"$match": {"id": game_id}},

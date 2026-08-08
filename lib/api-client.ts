@@ -1,10 +1,10 @@
 import type { User } from "@/types/user"
 import type { Player } from "@/types/player"
+import type { PlayerProfile } from "@/types/player-profile"
 import type { Pick } from "@/types/pick"
 import type { Team } from "@/types/team"
 import type { Game } from "@/types/game"
 import type { League, LeagueMembership } from "@/types/league"
-import type { JoinRequest } from "@/types/league"
 import type { ApiResponse } from "@/lib/api-types"
 import type { SeasonSummary } from "@/types/season-summary"
 
@@ -140,18 +140,6 @@ export async function updateUserProfile(userId: string, updates: { name?: string
   })
 }
 
-// Placeholder functions for features not yet implemented in the API
-// These maintain the same interface as the original API but throw "not implemented" errors
-
-export async function requestToJoinLeague(
-  leagueId: number,
-  userId: string,
-  teamName: string,
-  message?: string,
-): Promise<void> {
-  throw new Error('requestToJoinLeague not implemented yet')
-}
-
 export async function getLeagueMember(leagueId: number | string, memberId: number | string): Promise<LeagueMembership | null> {
   return apiRequest(`/leagues/${leagueId}/members/${memberId}`)
 }
@@ -171,20 +159,6 @@ export async function removeMemberFromLeague(leagueId: number | string, memberId
   return apiRequest(`/leagues/${leagueId}/members/${memberId}`, {
     method: 'DELETE',
   })
-}
-
-export async function getJoinRequests(leagueId: number): Promise<JoinRequest[]> {
-  // TODO: Implement join requests API when needed
-  // For now, return empty array to prevent console errors
-  return []
-}
-
-export async function approveJoinRequest(requestId: number): Promise<void> {
-  throw new Error('approveJoinRequest not implemented yet')
-}
-
-export async function rejectJoinRequest(requestId: number): Promise<void> {
-  throw new Error('rejectJoinRequest not implemented yet')
 }
 
 export async function updateLeagueSettings(
@@ -260,8 +234,13 @@ export async function makePick(userId: string, gameId: number, teamId: number, l
   })
 }
 
-export async function getPlayerProfile(playerId: string, leagueId: string): Promise<Player | null> {
-  throw new Error('getPlayerProfile not implemented yet')
+export async function getPlayerProfile(playerId: string, leagueId: string): Promise<PlayerProfile | null> {
+  // CR-106: wired up for real. Was a permanently-throwing stub -- the Python
+  // route (api/app/routers/results.py) didn't exist under the old TS backend,
+  // so there was nothing to call. Any active league member may look up any
+  // other member's profile; picks are NOT included (self-only, see
+  // getUserPicks) per CR-105-FINDINGS.md Addendum 2's privacy boundary.
+  return apiRequest(`/leagues/${leagueId}/players/${playerId}/profile`)
 }
 
 export async function getSeasonSummary(leagueId: number): Promise<SeasonSummary> {

@@ -1,7 +1,7 @@
 import { ObjectId } from 'mongodb'
 import { getDatabase, Collections } from './mongodb'
 import type { User } from '@/types/user'
-import type { League, LeagueMembership, JoinRequest } from '@/types/league'
+import type { League, LeagueMembership } from '@/types/league'
 import type { Team } from '@/types/team'
 import type { Game, GameStatus } from '@/types/game'
 import type { Pick } from '@/types/pick'

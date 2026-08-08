@@ -7,47 +7,33 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  
-  // Production optimizations
+
+  // CR-106: static export -- Next.js builds to `out/`, FastAPI serves it (and
+  // /api/*) from a single Heroku dyno. No Node server runs in production, so
+  // anything requiring one (Image Optimization, Route Handlers, middleware,
+  // headers()) is out.
+  output: 'export',
+  trailingSlash: true,
+
+  // Image Optimization needs a running server or a custom loader; static
+  // export supports neither out of the box, so serve images unoptimized.
   images: {
-    // Enable image optimization for production
-    unoptimized: false,
-    domains: ['resources.premierleague.com'], // Allow external image domains
-  },
-  
-  // Remove standalone output for npm start compatibility
-  // Note: Standalone mode can be used for Docker deployments if needed
-  
-  // Compression and performance
-  compress: true,
-  
-  // Environment variables that should be available on client side
-  env: {
-    NEXTAUTH_URL: process.env.NEXTAUTH_URL,
+    unoptimized: true,
   },
 
-  // Security headers for production
-  async headers() {
-    return [
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY',
-          },
-          {
-            key: 'X-Content-Type-Options',
-            value: 'nosniff',
-          },
-          {
-            key: 'Referrer-Policy',
-            value: 'origin-when-cross-origin',
-          },
-        ],
-      },
-    ];
-  },
+  // Compression and performance
+  compress: true,
+
+  // NOTE: no `env` block here anymore. The only entry it ever had
+  // (NEXTAUTH_URL) was consumed exclusively by app/api/admin/users/[userId]/
+  // generate-reset-link/route.ts, which is deleted under CR-106 AC2 -- its
+  // Python port (api/app/routers/password_reset.py) reads NEXTAUTH_URL
+  // directly from the server process's own env, not from anything baked into
+  // the client JS bundle. Confirmed vestigial, safe to drop (CR-106 AC5).
+
+  // Security headers now live in api/app/main.py's ASGI middleware (CR-106
+  // AC6) -- `headers()` isn't supported under `output: 'export'`, there's no
+  // server for it to run on.
 }
 
 export default nextConfig
