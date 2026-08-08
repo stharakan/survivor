@@ -1,0 +1,48 @@
+[project]
+name = "survivor-league-api"
+version = "0.1.0"
+description = "Survivor League API (FastAPI) -- CR-105/CR-106"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "uvicorn[standard]>=0.32,<1.0",
+    "motor>=3.6,<4.0",
+    "pydantic>=2.9,<3.0",
+    "pydantic[email]>=2.9,<3.0",
+    "bcrypt>=4.2,<5.0",
+    "httpx>=0.27,<1.0",
+    # Phase 2 -- the already-decided auth boundary: FastAPI verifies (and
+    # issues) JWTs directly for browser routes, no BFF proxy back to Next.js.
+    "python-jose[cryptography]>=3.3,<4.0",
+    "python-dotenv>=1.0,<2.0",
+]
+
+# Manifest lives at the repo root, not api/, because Heroku's Python
+# buildpack (classic and uv-enabled) only ever looks for pyproject.toml /
+# uv.lock / .python-version at the build-dir root -- same root-only
+# detection constraint requirements.txt had (see the now-removed root
+# requirements.txt shim this replaces). The actual code stays under api/;
+# nothing here is meant to be importable as a top-level package -- see
+# `[tool.uv] package = false` below.
+#
+# Still pinned to major.minor floors, not exact versions -- uv.lock is what
+# pins exact resolved versions for reproducible installs; these ranges just
+# bound what uv is allowed to resolve to. Tighten once CI (CR-002) is wired
+# up for this directory.
+
+[dependency-groups]
+# Test-only deps: the golden-fixture parity test (test_game_utils_parity.py)
+# and the live-MongoDB verification script/tests. Excluded from prod installs
+# via `uv sync --no-dev` (Heroku build should NOT pass --no-dev yet, since
+# nothing distinguishes a "prod install" step from `uv sync` today -- revisit
+# alongside CR-002).
+dev = [
+    "pytest>=8.0,<9.0",
+    "pytest-asyncio>=0.24,<1.0",
+]
+
+[tool.uv]
+# This isn't an installable package (the app lives under api/app, not a
+# root-level package matching `name` above) -- tell uv to just resolve/sync
+# dependencies into a venv, not build/install the project itself.
+package = false

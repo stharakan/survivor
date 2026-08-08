@@ -4,8 +4,10 @@
 **Title**: Export Next.js as static assets, serve from the Python API on one Heroku dyno
 **Type**: Migration / Infra
 **Priority**: Critical — blocks go-live (~Aug 13-16) and season start (~Aug 20)
-**Story Points**: 8 (rough; AC4 and AC5 are the unknowns)
-**Status**: Proposed
+**Story Points**: 8 (rough; AC4 and AC5 were the unknowns going in -- both are done now)
+**Status**: In Progress -- 5/8 ACs done (AC1, AC4, AC5, AC6, AC7). **`npm run
+build` on `main` currently hard-fails** (see AC2) -- see "Current blocker" below
+before picking up more work here.
 **Parent**: CR-105 (Python backend port) — this is the frontend-cutover phase CR-105
 Phase 2 explicitly left undone. Also resolves the "Deployment packaging idea" flagged
 as park-and-explore in `COLLABORATION_READINESS_EPIC.md`.
@@ -19,6 +21,21 @@ cross-site cookies) split specifically because single-origin eliminates the CORS
 `SameSite` cookie problems entirely — there is no cross-site request to configure
 around. Also cheaper (one dyno, not two), consistent with the epic's cost
 constraint.
+
+## Current blocker (read this first)
+
+`next.config.mjs` already has `output: 'export'` (AC1, done), but `app/api/*` and
+`middleware.ts` are still in the tree (AC2/AC3, not done). Verified by actually
+running `npm run build` on `main`: it hard-fails collecting page data for every
+remaining Route Handler, e.g.
+
+    Error: export const dynamic = "force-static"/export const revalidate not
+    configured on route "/api/admin/users/[userId]/generate-reset-link" with
+    "output: export"
+
+So `main` is in a self-inconsistent state right now -- AC1 landed ahead of the
+AC2/AC3 cleanup it depends on. AC2 (delete `app/api/*`, gated on route-by-route
+Python parity) is the next thing to pick up here, not optional cleanup.
 
 ## What's already in good shape (verified, don't re-litigate)
 
@@ -36,7 +53,7 @@ constraint.
 
 ## Acceptance Criteria
 
-**AC1 — `next.config.mjs`**
+**AC1 — `next.config.mjs`** ✅ Done
 - Add `output: 'export'`
 - `images.unoptimized: true` (Image Optimization needs a running server; export mode
   requires this or a custom loader)
@@ -45,69 +62,122 @@ constraint.
 - Add `trailingSlash: true` so exported output maps cleanly to directory-style URLs
   a static-file server can serve
 
-**AC2 — Delete `app/api/*`**
+Verified current `next.config.mjs` has all four. Note: its comments already talk
+about AC2/AC6 as if done ("Security headers now live in api/app/main.py's ASGI
+middleware (CR-106 AC6)") -- they aren't yet (see AC2, AC6 below). Don't trust that
+comment as a status source; this ticket is.
+
+**AC2 — Delete `app/api/*`** ⬜ Not started -- **current blocker, pick up next**
 Not optional cleanup — Route Handlers require a server and the build will hard-fail
 under `output: 'export'` if any remain. Gate this on confirming Python parity for
 every route currently under `app/api/` (expected to already be true per CR-105, but
-verify route-by-route before deleting, not after).
+verify route-by-route before deleting, not after). Confirmed this is the actual
+current build failure on `main` (see "Current blocker" above) -- every remaining
+`app/api/**/route.ts` needs either a Python-side parity check-off or an explicit
+`export const dynamic = "force-static"` if it turns out to be static-safe (unlikely
+given these are POST/mutation routes).
 
-**AC3 — Delete `middleware.ts`**
+**AC3 — Delete `middleware.ts`** ⬜ Not started
 Doesn't run under static export (no server to run it on). Its job — blocking
-unauthenticated `/api/*` calls — is already duplicated in `auth_deps.py`.
+unauthenticated `/api/*` calls — is already duplicated in `auth_deps.py`. Currently
+dead weight in the build (harmless on its own, but should go with AC2 since nothing
+under a static export will ever invoke it).
 
-**AC4 — Resolve the five dynamic path-param pages** (the real unknown in this
-ticket)
-`app/invite/[token]`, `app/reset-password/[token]`, `app/player/[id]`,
-`app/admin/members/[id]`, `app/admin/requests/[id]`. Static export requires every
-dynamic segment resolvable at build time via `generateStaticParams()` — impossible
-here since tokens/ids don't exist until runtime, and none of the five implement it
-today. As-is, the build fails as soon as AC1 lands. Pick one pattern, apply to all
-five:
-1. **Query-string routes** (`/invite?token=...`) — least code, but breaks any
-   already-issued path-style link.
-2. **Keep path URLs**, ship one static shell per route, add a FastAPI catch-all that
-   serves that shell for any sub-path, page reads the id from
-   `usePathname()`/`window.location` instead of Next's route param.
+**AC4 — Resolve the dynamic path-param pages** ✅ Done
+Original scope named five pages: `app/invite/[token]`, `app/reset-password/[token]`,
+`app/player/[id]`, `app/admin/members/[id]`, `app/admin/requests/[id]`. Resolution:
+- **Answered the open question**: no invite/reset-password links were already
+  circulating, so the simpler option applied.
+- **Option 1 (query-string routes)** applied to four of the five --
+  `app/invite`, `app/reset-password`, `app/player`, `app/admin/members` are now flat
+  routes reading `useSearchParams()` (`?token=...` / `?id=...`) instead of a path
+  segment. Verified in code (`useSearchParams` + `searchParams.get(...)` present in
+  all four `page.tsx` files).
+- **`app/admin/requests/[id]` wasn't converted -- it was deleted.** `join-requests`
+  was confirmed dead code during the CR-105 audit (see "What's already in good
+  shape" above), so this wasn't a sixth pattern-application, it just went away. The
+  route directory doesn't exist in the tree.
+- Landed in `954ebcb`.
 
-**Open question, answer before starting**: are any invite or password-reset links
-already circulating (sent via email, etc.)? If yes → option 2. If the answer is no
-for all five routes, option 1 is simpler and fine.
-
-**AC5 — Heroku build & runtime**
+**AC5 — Heroku build & runtime** ✅ Done (dependency manager changed after initial
+landing -- see below)
 - Multi-buildpack: Node (runs `npm run build` → `out/`) then Python (runs FastAPI).
-- `Procfile`: `web: npm start` → something that runs `uvicorn app.main:app` from
-  `api/`.
+- `Procfile`: `web: cd api && uv run --project .. uvicorn app.main:app --host 0.0.0.0
+  --port $PORT`.
 - FastAPI: `StaticFiles` mount serving `out/`, registered **after** the API routers
-  so `/api/*` still matches first, plus a catch-all fallback for direct-URL loads
-  and client-side navigation.
-- Glue step to get the Node-built `out/` directory into a place the Python process
-  can read at runtime (buildpacks build in separate steps by default) — likely a
-  `bin/post_compile` script or equivalent. **Dry-run on a Heroku review app before
-  touching prod.**
-- Any frontend env var baked at build time must be a Heroku config var at *build*
-  time, not just runtime, since static export bakes it into the JS bundle. Currently
-  only `NEXTAUTH_URL` (via `next.config.mjs`'s `env` block) — confirm during
-  implementation whether this is actually used anywhere (app's auth is custom
-  JWT/cookie, not NextAuth; this may be vestigial and safe to drop).
+  so `/api/*` still matches first, plus a catch-all fallback (`out/404.html`) for
+  unmatched paths. Landed in `api/app/main.py` as part of `9299a63`.
+- `bin/post_compile` (Node-buildpack post-build hook) fails the build loudly if
+  `out/index.html` wasn't produced, relying on Heroku's native multi-buildpack
+  shared-build-dir behavior (not the deprecated `heroku-buildpack-multi` isolated-dir
+  model) -- no file-copy step needed.
+- `NEXTAUTH_URL` confirmed vestigial (only consumer was the now-deleted-under-AC2
+  `generate-reset-link` Route Handler) and dropped from `next.config.mjs`'s `env`
+  block -- no new Heroku build-time config vars needed beyond what AC1 already
+  resolved.
 
-**AC6 — Security headers**
-Move `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` (currently set
-via Next's `headers()`, removed in AC1) into a small ASGI middleware in
-`api/app/main.py`, applied to both API responses and served static assets.
+  **Dependency manager switched to `uv` after `9299a63`** (this was still `pip` +
+  `requirements.txt` when AC5 first landed). Heroku's Python buildpack now supports
+  `uv` natively, but detection is root-only, same constraint `requirements.txt` had
+  -- `pyproject.toml` / `uv.lock` / `.python-version` must sit at the **repo root**,
+  not `api/`, even though all the actual Python code stays under `api/`. Also,
+  Heroku's classic buildpack rejects the build outright if it finds more than one
+  package-manager manifest, so this was a full swap, not an addition:
+  - Added `pyproject.toml`, `uv.lock`, `.python-version` (pinned `3.13` -- checked
+    Heroku's current support matrix: `3.10` is deprecated there now, `3.12`/`3.13`/
+    `3.14` are supported; picked `3.13` over the newer `3.14` for wider wheel
+    availability on the C-extension deps, `bcrypt`/`cryptography`).
+  - Deleted the root `requirements.txt` shim and `api/requirements.txt`.
+    `pyproject.toml` has `[tool.uv] package = false` since this isn't an installable
+    package (the code lives under `api/app`, not a root-level package) -- uv just
+    resolves/syncs dependencies into a venv.
+  - `pytest`/`pytest-asyncio` moved into a `[dependency-groups] dev` group instead of
+    living in the same flat list as prod deps.
+  - Procfile and `api/README.md`'s install/run instructions updated to `uv run
+    --project ..` (run from `api/`, resolves against the root manifest, keeps
+    `app.main:app`'s import path unchanged).
+  - Verified locally: `uv lock` resolved cleanly (46 packages), `uv run --project ..`
+    from `api/` builds a root `.venv` and imports `app.main`, `pytest
+    --collect-only` finds all 38 tests via the `dev` group, and the exact Procfile
+    command boots uvicorn and returns 200 on `/health`.
+  - Still not done: an actual Heroku dry-run (`buildpacks:add` against a review app,
+    real `git push`) to confirm the uv-enabled buildpack path works end-to-end on
+    Heroku's infra, not just locally. Called out as not-done in the original AC5
+    commit too -- still true.
 
-**AC7 — Fix the team-reuse validation gap before cutover goes live**
+**AC6 — Security headers** ✅ Done
+Moved `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`,
+`Referrer-Policy: origin-when-cross-origin` (values confirmed unchanged against
+git history, commit 5d2725e's `next.config.mjs`) into
+`api/app/core/security_headers.py`'s `SecurityHeadersMiddleware`, a
+`BaseHTTPMiddleware` subclass registered via `app.add_middleware(...)` in
+`api/app/main.py`, right after `register_exception_handlers(app)` and before any
+router/mount. Starlette applies middleware around the whole ASGI app regardless of
+registration order relative to routes, so this covers `/api/*` responses, the
+`out/` static mount, and the catch-all 404 fallback alike -- same blanket
+`source: '/(.*)'` coverage the original `headers()` block had. Verified via
+`TestClient`: headers present on `/health` (200) and on an unmatched path (404,
+falls through to FastAPI's default handler since no `out/` exists in this
+environment). Added `api/tests/test_security_headers.py` (2 tests, both pass); full
+non-live suite now 37 passed, 3 deselected (live-mongo smoke tests, unaffected).
+
+**AC7 — Fix the team-reuse validation gap before cutover goes live** ✅ Done
 `api/app/db/picks.py::create_pick` fixed the draw-scoring bug during the CR-105 port
 but still carries forward the same gap as the original TS code: no server-side check
 that a team hasn't already been picked twice this season (`isTeamUsed` is UI-only).
 Low priority in the abstract, but once this Python path is what's actually live for
 real picks, it's the same integrity gap the auth fix (already done in this router)
-was meant to close. Fix it here, in Python, not TS.
+was meant to close. Fixed here, in Python, not TS -- `create_pick` now counts prior
+uses of the team (excluding the week being replaced) and raises before the upsert if
+count >= 2. See the `CR-106 AC7` docstring note in `api/app/db/picks.py`.
 
-**AC8 — Real browser-based end-to-end verification, not curl**
+**AC8 — Real browser-based end-to-end verification, not curl** ⬜ Not started
 Everything on the Python side has only been verified via `curl` so far (per the
 CR-105 Phase 2 report). Before this goes live: full browser walkthrough of
 login → cookie persists across reload → protected route redirect works →
-logout clears cookie → make a pick → admin toggles paid/unpaid.
+logout clears cookie → make a pick → admin toggles paid/unpaid. Blocked on AC2/AC3
+landing first -- there's no static export to browser-test against a real backend
+until those are done (or at least worked around locally).
 
 ## Cost Considerations
 
@@ -117,12 +187,13 @@ paid services. Consistent with the epic's cost constraint.
 ## Dependencies
 
 - CR-105 Phases 1-2 (done — Pydantic models, db layer, all routers ported)
-- AC4's pattern choice depends on checking whether any invite/reset-password links
-  are already live
+- ~~AC4's pattern choice depends on checking whether any invite/reset-password links
+  are already live~~ Resolved -- none were, option 1 applied (see AC4).
 - Should get a cross-reference added from `CR-105-*` docs and
   `COLLABORATION_READINESS_EPIC.md`'s "Deployment packaging idea" section once this
   is picked up, since both currently point here as unresolved
 
 ## Timeline
 
-Blocks go-live and season start — needs to land before both.
+Blocks go-live and season start — needs to land before both. AC2/AC3 are the
+critical path now: `main`'s build is broken until they land.

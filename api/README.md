@@ -6,13 +6,18 @@ contracts -- **no HTTP routes are wired up yet**, that's Phase 2.
 
 ## Install
 
-Requires Python 3.10+ (uses `X | Y` union syntax and `list[T]` generics in a few
-places).
+Requires [uv](https://docs.astral.sh/uv/) (Python 3.10+ under the hood -- the app
+uses `X | Y` union syntax and `list[T]` generics in a few places). The dependency
+manifest (`pyproject.toml`, `uv.lock`, `.python-version`) lives at the **repo
+root**, not here -- that's a Heroku buildpack requirement (see the root
+`pyproject.toml`'s comment), even though all the actual code stays under `api/`.
 
     cd api
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
+    uv sync --project ..
+
+This creates a `.venv` at the repo root pinned to the `.python-version` there,
+with every dependency resolved exactly per `uv.lock`. `python3 -m venv` + `pip
+install` is no longer how this is installed.
 
 ## Configure
 
@@ -40,7 +45,11 @@ Put these in `api/.env` (not committed) and load them however you prefer
 
 ## Run
 
-    uvicorn app.main:app --reload
+    uv run --project .. uvicorn app.main:app --reload
+
+(`--project ..` points uv at the root `pyproject.toml`/`uv.lock` for dependency
+resolution; the command itself still runs with `api/` as its cwd, same as the
+Procfile, so `app.main:app` resolves the same way in dev and in prod.)
 
 `GET /health` is the only live route today -- it confirms the app boots and the
 Mongo client was constructed. Everything else (`app/db/*.py`, `app/models/*.py`)

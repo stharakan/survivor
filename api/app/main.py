@@ -13,6 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from app.core.responses import register_exception_handlers
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.mongodb import close_client, get_client
 from app.routers import (
     admin_scoring,
@@ -50,6 +51,13 @@ app = FastAPI(
 )
 
 register_exception_handlers(app)
+
+# CR-106 AC6 -- port of next.config.mjs's removed `headers()` block. Added
+# before any router/mount below so it wraps every response this app returns,
+# API and static alike (Starlette applies middleware around the whole ASGI
+# app regardless of registration order relative to routes/mounts, but
+# keeping it first here mirrors the "runs on everything" intent).
+app.add_middleware(SecurityHeadersMiddleware)
 
 # Rank 1 -- auth
 app.include_router(auth.router)
