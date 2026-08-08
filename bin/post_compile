@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# CR-106 AC5 -- run automatically by heroku-buildpack-nodejs after `npm run
+# build`, from the build dir (this repo's root at build time). With Heroku's
+# native multi-buildpack support, buildpacks share one build directory run in
+# sequence (not isolated per-buildpack) -- see
+# https://devcenter.heroku.com/articles/managing-buildpacks -- so `out/`
+# produced here is already in place for the Python buildpack's step and the
+# final slug; no copy/move is needed. This hook exists to fail the build
+# loudly if that assumption ever breaks, instead of shipping a slug that 404s
+# on every page at runtime.
+set -euo pipefail
+
+BUILD_DIR="${1:-$(pwd)}"
+
+if [ ! -f "$BUILD_DIR/out/index.html" ]; then
+  echo "-----> CR-106 post_compile: out/index.html not found -- static export"
+  echo "       did not produce the expected output. Failing the build."
+  exit 1
+fi
+
+echo "-----> CR-106 post_compile: out/ static export present, $(du -sh "$BUILD_DIR/out" | cut -f1)"
