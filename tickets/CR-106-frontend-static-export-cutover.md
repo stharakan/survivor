@@ -5,9 +5,9 @@
 **Type**: Migration / Infra
 **Priority**: Critical — blocks go-live (~Aug 13-16) and season start (~Aug 20)
 **Story Points**: 8 (rough; AC4 and AC5 were the unknowns going in -- both are done now)
-**Status**: In Progress -- 5/8 ACs done (AC1, AC4, AC5, AC6, AC7). **`npm run
-build` on `main` currently hard-fails** (see AC2) -- see "Current blocker" below
-before picking up more work here.
+**Status**: In Progress -- 7/8 ACs done (AC1, AC2, AC3, AC4, AC5, AC6, AC7).
+`npm run build` now succeeds (`out/` produced cleanly). AC8 (browser-based
+end-to-end verification) is the only thing left.
 **Parent**: CR-105 (Python backend port) — this is the frontend-cutover phase CR-105
 Phase 2 explicitly left undone. Also resolves the "Deployment packaging idea" flagged
 as park-and-explore in `COLLABORATION_READINESS_EPIC.md`.
@@ -22,20 +22,18 @@ cross-site cookies) split specifically because single-origin eliminates the CORS
 around. Also cheaper (one dyno, not two), consistent with the epic's cost
 constraint.
 
-## Current blocker (read this first)
+## Former blocker (resolved by AC2/AC3, kept for history)
 
-`next.config.mjs` already has `output: 'export'` (AC1, done), but `app/api/*` and
-`middleware.ts` are still in the tree (AC2/AC3, not done). Verified by actually
-running `npm run build` on `main`: it hard-fails collecting page data for every
-remaining Route Handler, e.g.
+`next.config.mjs` already had `output: 'export'` (AC1, done), but `app/api/*` and
+`middleware.ts` were still in the tree (AC2/AC3). This made `npm run build` hard-fail
+collecting page data for every remaining Route Handler, e.g.
 
     Error: export const dynamic = "force-static"/export const revalidate not
     configured on route "/api/admin/users/[userId]/generate-reset-link" with
     "output: export"
 
-So `main` is in a self-inconsistent state right now -- AC1 landed ahead of the
-AC2/AC3 cleanup it depends on. AC2 (delete `app/api/*`, gated on route-by-route
-Python parity) is the next thing to pick up here, not optional cleanup.
+Resolved: AC2/AC3 landed (route-by-route Python parity verified first, then both
+deleted). `npm run build` now succeeds end-to-end and produces `out/`.
 
 ## What's already in good shape (verified, don't re-litigate)
 
@@ -67,21 +65,35 @@ about AC2/AC6 as if done ("Security headers now live in api/app/main.py's ASGI
 middleware (CR-106 AC6)") -- they aren't yet (see AC2, AC6 below). Don't trust that
 comment as a status source; this ticket is.
 
-**AC2 — Delete `app/api/*`** ⬜ Not started -- **current blocker, pick up next**
-Not optional cleanup — Route Handlers require a server and the build will hard-fail
-under `output: 'export'` if any remain. Gate this on confirming Python parity for
-every route currently under `app/api/` (expected to already be true per CR-105, but
-verify route-by-route before deleting, not after). Confirmed this is the actual
-current build failure on `main` (see "Current blocker" above) -- every remaining
-`app/api/**/route.ts` needs either a Python-side parity check-off or an explicit
-`export const dynamic = "force-static"` if it turns out to be static-safe (unlikely
-given these are POST/mutation routes).
+**AC2 — Delete `app/api/*`** ✅ Done
+Verified Python parity route-by-route before deleting (all 24 `app/api/**/route.ts`
+files, every exported HTTP method) against `api/app/routers/*.py`:
+- All GET/POST/PATCH/DELETE handlers with real logic have a matching Python route
+  (same path prefix + method), confirmed by reading both sides, not just prefix
+  matching.
+- Three intentional non-1:1s, all independently confirmed safe:
+  - `DELETE /api/leagues/[leagueId]` — the TS handler was a 501 "not implemented
+    yet" stub with zero callers in `lib/api-client.ts`; `leagues.py`'s own
+    docstring documents it as deliberately cut (CR-105-FINDINGS.md Table 3 item 9).
+  - `GET` on `admin/recompute-scores` and `admin/update-game-scores` — TS handlers
+    were 405 "method not allowed" stubs (real logic is POST-only, already ported to
+    `admin_scoring.py`).
+  - `PUT`/`DELETE` stubs on `generate-reset-link` and `reset-password/[token]` — TS
+    handlers were 405 stubs; FastAPI/Starlette return 405 automatically for
+    unmatched methods on a registered path, so no explicit port was needed.
+- Deleted the whole `app/api/` tree, including a few untracked leftover empty
+  directories (`app/api/auth/change-password`,
+  `app/api/admin/users/[userId]/reset-password`,
+  `app/api/leagues/[leagueId]/games`, `app/api/leagues/[leagueId]/picks`) that had
+  no `route.ts` in them.
 
-**AC3 — Delete `middleware.ts`** ⬜ Not started
-Doesn't run under static export (no server to run it on). Its job — blocking
-unauthenticated `/api/*` calls — is already duplicated in `auth_deps.py`. Currently
-dead weight in the build (harmless on its own, but should go with AC2 since nothing
-under a static export will ever invoke it).
+**AC3 — Delete `middleware.ts`** ✅ Done
+Deleted. Doesn't run under static export (no server to run it on). Its job —
+blocking unauthenticated `/api/*` calls — is already duplicated in `auth_deps.py`.
+
+Verified together: `npm run build` now completes cleanly (`✓ Compiled
+successfully`, `✓ Generating static pages (20/20)`, `✓ Exporting (2/2)`) and
+`out/index.html` exists.
 
 **AC4 — Resolve the dynamic path-param pages** ✅ Done
 Original scope named five pages: `app/invite/[token]`, `app/reset-password/[token]`,
@@ -175,9 +187,9 @@ count >= 2. See the `CR-106 AC7` docstring note in `api/app/db/picks.py`.
 Everything on the Python side has only been verified via `curl` so far (per the
 CR-105 Phase 2 report). Before this goes live: full browser walkthrough of
 login → cookie persists across reload → protected route redirect works →
-logout clears cookie → make a pick → admin toggles paid/unpaid. Blocked on AC2/AC3
-landing first -- there's no static export to browser-test against a real backend
-until those are done (or at least worked around locally).
+logout clears cookie → make a pick → admin toggles paid/unpaid. AC2/AC3 are now
+landed, so there's a clean static export (`out/`) to browser-test against a real
+backend -- this is the only remaining AC.
 
 ## Cost Considerations
 
@@ -195,5 +207,6 @@ paid services. Consistent with the epic's cost constraint.
 
 ## Timeline
 
-Blocks go-live and season start — needs to land before both. AC2/AC3 are the
-critical path now: `main`'s build is broken until they land.
+Blocks go-live and season start — needs to land before both. AC2/AC3 have landed
+and `main`'s build is green again. AC8 (browser-based verification) is the only
+remaining critical-path item before cutover.
