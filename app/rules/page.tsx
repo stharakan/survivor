@@ -1,12 +1,13 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useLeague } from "@/hooks/use-league"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { FileText, DollarSign, Trophy, Clock, MessageSquare, Menu } from "lucide-react"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
@@ -308,7 +309,14 @@ function RulesContent() {
 export default function RulesPage() {
   return (
     <LeagueGuard>
-      <RulesContent />
+      <Suspense fallback={
+        <div className="space-y-6">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-[400px] w-full" />
+        </div>
+      }>
+        <RulesContent />
+      </Suspense>
     </LeagueGuard>
   )
 }

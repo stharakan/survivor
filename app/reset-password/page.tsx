@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { useParams, useRouter } from "next/navigation"
+import { useEffect, useState, Suspense } from "react"
+import { useSearchParams, useRouter } from "next/navigation"
 import type { PasswordResetValidationInfo } from "@/types/password-reset"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -12,11 +12,17 @@ import { KeyRound, AlertCircle, CheckCircle, XCircle, Eye, EyeOff } from "lucide
 import Image from "next/image"
 import Link from "next/link"
 
-export default function PasswordResetPage() {
-  const params = useParams()
-  const token = params.token as string
+// CR-106 AC4: was app/reset-password/[token]/page.tsx. Static export requires
+// every dynamic route segment to be resolvable via generateStaticParams() at
+// build time, which is impossible for a token that doesn't exist until
+// runtime. Moved to a query-string route (`/reset-password?token=...`) -- no
+// reset links were circulating yet, so there was no already-issued
+// path-style link to preserve.
+function PasswordResetContent() {
+  const searchParams = useSearchParams()
+  const token = searchParams.get("token") ?? ""
   const router = useRouter()
-  
+
   const [resetInfo, setResetInfo] = useState<PasswordResetValidationInfo | null>(null)
   const [loading, setLoading] = useState(true)
   const [newPassword, setNewPassword] = useState("")
@@ -33,7 +39,7 @@ export default function PasswordResetPage() {
       try {
         const response = await fetch(`/api/reset-password/${token}`)
         const data = await response.json()
-        
+
         if (data.success) {
           setResetInfo(data.data)
         } else {
@@ -49,44 +55,47 @@ export default function PasswordResetPage() {
 
     if (token) {
       fetchResetInfo()
+    } else {
+      setError('Password reset link is missing a token')
+      setLoading(false)
     }
   }, [token])
 
   const handlePasswordReset = async () => {
     if (!resetInfo) return
-    
+
     if (!newPassword.trim()) {
       setError('Please enter a new password')
       return
     }
-    
+
     if (newPassword.length < 6) {
       setError('Password must be at least 6 characters')
       return
     }
-    
+
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match')
       return
     }
-    
+
     setResetting(true)
     setError(null)
-    
+
     try {
       const response = await fetch(`/api/reset-password/${token}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           newPassword,
           confirmPassword
         }),
       })
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setSuccess(true)
         // Redirect to login after a short delay
@@ -128,7 +137,7 @@ export default function PasswordResetPage() {
             <span className="text-2xl md:text-3xl text-retro-red block">RESET ERROR</span>
           </h1>
         </div>
-        
+
         <Card className="border-4 border-red-500 shadow-pixel max-w-md mx-auto">
           <CardHeader className="bg-red-500 text-white border-b-4 border-black">
             <CardTitle className="flex items-center gap-2">
@@ -141,7 +150,7 @@ export default function PasswordResetPage() {
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{error}</AlertDescription>
             </Alert>
-            
+
             <div className="text-center">
               <p className="text-sm text-muted-foreground mb-4">
                 The password reset link may have expired or is no longer valid.
@@ -177,7 +186,7 @@ export default function PasswordResetPage() {
             <span className="text-2xl md:text-3xl text-retro-green block">SUCCESS!</span>
           </h1>
         </div>
-        
+
         <Card className="border-4 border-green-500 shadow-pixel max-w-md mx-auto">
           <CardHeader className="bg-green-500 text-white border-b-4 border-black">
             <CardTitle className="flex items-center gap-2">
@@ -226,8 +235,8 @@ export default function PasswordResetPage() {
             <Alert variant="destructive" className="border-2 border-black mb-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                {resetInfo.token.isExpired 
-                  ? "This password reset link has expired" 
+                {resetInfo.token.isExpired
+                  ? "This password reset link has expired"
                   : resetInfo.token.isUsed
                   ? "This password reset link has already been used"
                   : "This password reset link is no longer valid"
@@ -351,9 +360,9 @@ export default function PasswordResetPage() {
                 </Alert>
               )}
 
-              <Button 
-                variant="pixel" 
-                className="w-full" 
+              <Button
+                variant="pixel"
+                className="w-full"
                 onClick={handlePasswordReset}
                 disabled={resetting || !newPassword.trim() || !confirmPassword.trim()}
               >
@@ -372,5 +381,18 @@ export default function PasswordResetPage() {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+export default function PasswordResetPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col items-center justify-center min-h-[80vh] gap-8">
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-retro-orange"></div>
+        <p className="font-pixel text-lg">Loading...</p>
+      </div>
+    }>
+      <PasswordResetContent />
+    </Suspense>
   )
 }

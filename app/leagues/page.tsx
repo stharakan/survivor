@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getAllLeagues, requestToJoinLeague } from "@/lib/api"
+import { getAllLeagues } from "@/lib/api"
 import type { League } from "@/types/league"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Users, Trophy, Calendar, Plus, Clock, CheckCircle, Award } from "lucide-react"
+import { Users, Trophy, Calendar, Clock, Award } from "lucide-react"
 import { redirect } from "next/navigation"
 import Image from "next/image"
 
@@ -19,7 +19,6 @@ export default function LeagueSelectionPage() {
   const { userLeagues, selectLeague, loading: leagueLoading } = useLeague()
   const [allLeagues, setAllLeagues] = useState<League[]>([])
   const [loadingLeagues, setLoadingLeagues] = useState(false)
-  const [joinRequests, setJoinRequests] = useState<Record<number, "pending" | "success" | "error">>({})
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -48,20 +47,6 @@ export default function LeagueSelectionPage() {
       fetchAllLeagues()
     }
   }, [user])
-
-  const handleJoinRequest = async (league: League) => {
-    if (!user) return
-
-    setJoinRequests((prev) => ({ ...prev, [league.id]: "pending" }))
-
-    try {
-      await requestToJoinLeague(league.id, user.id, `${user.username}'s Team`)
-      setJoinRequests((prev) => ({ ...prev, [league.id]: "success" }))
-    } catch (error) {
-      console.error("Error requesting to join league:", error)
-      setJoinRequests((prev) => ({ ...prev, [league.id]: "error" }))
-    }
-  }
 
   if (authLoading || leagueLoading) {
     return (
@@ -120,7 +105,6 @@ export default function LeagueSelectionPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {allLeagues.map((league) => {
               const membership = getUserMembershipStatus(league.id)
-              const requestStatus = joinRequests[league.id]
 
               return (
                 <Card
@@ -255,36 +239,14 @@ export default function LeagueSelectionPage() {
                           <Clock className="h-4 w-4 mr-2" />
                           Request Pending
                         </Button>
-                      ) : requestStatus === "success" ? (
-                        <Alert variant="success" className="border-2 border-black">
-                          <CheckCircle className="h-4 w-4" />
-                          <AlertDescription>Join request submitted successfully!</AlertDescription>
-                        </Alert>
-                      ) : requestStatus === "error" ? (
-                        <Alert variant="destructive" className="border-2 border-black">
-                          <AlertDescription>Failed to submit request. Try again.</AlertDescription>
-                        </Alert>
                       ) : (
-                        <Button
-                          variant="pixel"
-                          className="w-full"
-                          disabled={requestStatus === "pending" || !league.isActive}
-                          onClick={() => handleJoinRequest(league)}
-                        >
-                          {requestStatus === "pending" ? (
-                            <>
-                              <Clock className="h-4 w-4 mr-2" />
-                              Requesting...
-                            </>
-                          ) : !league.isActive ? (
-                            "Season Complete"
-                          ) : (
-                            <>
-                              <Plus className="h-4 w-4 mr-2" />
-                              Ask to Join
-                            </>
-                          )}
-                        </Button>
+                        <Alert className="border-2 border-black">
+                          <AlertDescription>
+                            {league.isActive
+                              ? "Registration is invite-only. Contact your league admin for an invite."
+                              : "Season Complete"}
+                          </AlertDescription>
+                        </Alert>
                       )}
                     </div>
                   </CardContent>

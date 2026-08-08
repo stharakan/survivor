@@ -1,11 +1,11 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getLeagueMembers, getJoinRequests, updateMemberStatus, updateLeagueSettings } from "@/lib/api"
-import type { LeagueMembership, JoinRequest, SportsLeagueOption } from "@/types/league"
+import { getLeagueMembers, updateMemberStatus, updateLeagueSettings } from "@/lib/api"
+import type { LeagueMembership, SportsLeagueOption } from "@/types/league"
 import type { User } from "@/types/user"
 import type { InvitationWithLeague } from "@/types/invitation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,7 +28,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, Settings, UserCheck, Clock, Mail, Plus, Copy, Trash2, Calendar, CheckCircle, AlertCircle, XCircle, Save, Grid3X3 } from "lucide-react"
+import { Users, Settings, UserCheck, Mail, Plus, Copy, Trash2, Calendar, CheckCircle, AlertCircle, XCircle, Save, Grid3X3 } from "lucide-react"
 import Image from "next/image"
 import { AdminGuard } from "@/components/admin-guard"
 import Link from "next/link"
@@ -59,7 +59,6 @@ function AdminPortalContent() {
   
   // Members state
   const [members, setMembers] = useState<MemberWithUserDetails[]>([])
-  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [updatingMembers, setUpdatingMembers] = useState<Set<string>>(new Set())
   
@@ -113,15 +112,7 @@ function AdminPortalContent() {
         } catch (error) {
           console.error("Error fetching members:", error)
         }
-        
-        // Fetch join requests
-        try {
-          const requestsData = await getJoinRequests(currentLeague.id)
-          setJoinRequests(requestsData)
-        } catch (error) {
-          console.error("Error fetching join requests (expected - not implemented):", error)
-        }
-        
+
         setLoading(false)
       }
     }
@@ -255,7 +246,7 @@ function AdminPortalContent() {
   }
 
   const handleCopyLink = async (token: string) => {
-    const inviteUrl = `${window.location.origin}/invite/${token}`
+    const inviteUrl = `${window.location.origin}/invite?token=${token}`
     try {
       await navigator.clipboard.writeText(inviteUrl)
       setSuccess('Invitation link copied to clipboard!')
@@ -322,7 +313,6 @@ function AdminPortalContent() {
   }
 
   const activeMembers = members.filter((m) => m.status === "active")
-  const pendingRequests = joinRequests.filter((r) => r.status === "pending")
   const activeInvitations = invitations.filter(inv => inv.isActive)
   const revokedInvitations = invitations.filter(inv => !inv.isActive)
 
@@ -371,10 +361,6 @@ function AdminPortalContent() {
                 <Mail className="h-4 w-4 mr-2" />
                 Invites
               </TabsTrigger>
-              <TabsTrigger value="requests" className="justify-start bg-retro-orange/10 data-[state=active]:bg-retro-orange data-[state=active]:text-white">
-                <Clock className="h-4 w-4 mr-2" />
-                Requests
-              </TabsTrigger>
               <TabsTrigger value="settings" className="justify-start bg-retro-orange/10 data-[state=active]:bg-retro-orange data-[state=active]:text-white">
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
@@ -400,18 +386,6 @@ function AdminPortalContent() {
                             <div>
                               <div className="text-2xl font-bold">{activeMembers.length}</div>
                               <div className="text-sm text-muted-foreground">Active Members</div>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="border-4 border-black">
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-5 w-5 text-retro-orange" />
-                            <div>
-                              <div className="text-2xl font-bold">{pendingRequests.length}</div>
-                              <div className="text-sm text-muted-foreground">Pending Requests</div>
                             </div>
                           </div>
                         </CardContent>
@@ -478,7 +452,7 @@ function AdminPortalContent() {
                             ADMIN
                           </Badge>
                         )}
-                        <Link href={`/admin/members/${member.id}`}>
+                        <Link href={`/admin/members?id=${member.id}`}>
                           <Button variant="outline" size="sm" className="border-2 border-black bg-transparent">
                             Manage
                           </Button>
@@ -654,49 +628,6 @@ function AdminPortalContent() {
                 )}
               </TabsContent>
 
-              <TabsContent value="requests" className="space-y-4 mt-0">
-                <Card className="border-4 border-black">
-                  <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
-                    <CardTitle>Join Requests</CardTitle>
-                    <CardDescription className="text-white/80">Review pending membership requests</CardDescription>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    {pendingRequests.length > 0 ? (
-                      <div className="space-y-0 divide-y-2 divide-black">
-                        {pendingRequests.map((request) => (
-                          <div key={request.id} className="p-4 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                              <div>
-                                <div className="font-bold">{request.user.username}</div>
-                                <div className="text-sm text-muted-foreground">
-                                  Team: {request.teamName} • Requested: {new Date(request.requestedAt).toLocaleDateString()}
-                                </div>
-                                {request.message && (
-                                  <div className="text-sm mt-1 p-2 bg-gray-100 dark:bg-gray-800 border border-gray-300">
-                                    "{request.message}"
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Link href={`/admin/requests/${request.id}`}>
-                                <Button variant="pixel" size="sm">
-                                  Review
-                                </Button>
-                              </Link>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <p className="text-muted-foreground">No pending join requests.</p>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
               <TabsContent value="settings" className="space-y-4 mt-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {/* Basic Settings */}
@@ -859,7 +790,14 @@ function AdminPortalContent() {
 export default function AdminPortalPage() {
   return (
     <AdminGuard>
-      <AdminPortalContent />
+      <Suspense fallback={
+        <div className="space-y-6">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-[400px] w-full" />
+        </div>
+      }>
+        <AdminPortalContent />
+      </Suspense>
     </AdminGuard>
   )
 }

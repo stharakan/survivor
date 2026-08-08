@@ -84,7 +84,7 @@ function ScoreboardContent() {
   }, [user, currentLeague])
 
   const handleRowClick = (playerId: string) => {
-    router.push(`/player/${playerId}`)
+    router.push(`/player?id=${playerId}`)
   }
 
   const getPickDisplay = (player: Player) => {

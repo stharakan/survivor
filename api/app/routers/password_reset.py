@@ -70,7 +70,10 @@ async def generate_reset_link(user_id: str, body: GenerateResetLinkRequest, requ
     if not result.inserted_id:
         raise ApiError("Failed to create password reset token", 500)
 
-    reset_link = f"{NEXTAUTH_URL}/reset-password/{token}"
+    # CR-106 AC4: query-string route, not a path segment -- static export
+    # can't pre-resolve a dynamic path segment for a token that doesn't
+    # exist until runtime. See app/reset-password/page.tsx.
+    reset_link = f"{NEXTAUTH_URL}/reset-password?token={token}"
 
     try:
         await db["audit_logs"].insert_one({

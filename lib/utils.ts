@@ -46,10 +46,13 @@ export function validateRedirectUrl(redirectUrl: string | null | undefined): str
 
       // Check if the path starts with any allowed path
       const isAllowed = ALLOWED_REDIRECT_PATHS.some(allowedPath => {
-        if (allowedPath === '/player' || allowedPath === '/admin' || allowedPath === '/invite') {
-          // Allow dynamic routes like /player/123, /admin/settings, or /invite/token
+        if (allowedPath === '/admin') {
+          // /admin still has real sub-paths (admin/members, admin/settings, ...)
           return url.startsWith(allowedPath + '/') || url === allowedPath
         }
+        // CR-106 AC4: /player and /invite lost their sub-paths -- they're
+        // query-string routes now (/player?id=..., /invite?token=...), so
+        // no dynamic-prefix branch is needed for them anymore.
         return url === allowedPath || url.startsWith(allowedPath + '?') || url.startsWith(allowedPath + '#')
       })
 

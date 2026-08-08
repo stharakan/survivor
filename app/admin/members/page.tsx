@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
 import { getLeagueMember, updateMemberStatus, removeMemberFromLeague } from "@/lib/api"
@@ -13,11 +13,16 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Switch } from "@/components/ui/switch"
 import { Label } from "@/components/ui/label"
 import { ArrowLeft, UserX, AlertTriangle, CheckCircle, XCircle, KeyRound } from "lucide-react"
-import { useParams, useRouter } from "next/navigation"
+import { useSearchParams, useRouter } from "next/navigation"
 import Image from "next/image"
 import { AdminGuard } from "@/components/admin-guard"
 import { PasswordResetLinkDialog } from "@/components/password-reset-link-dialog"
 
+// CR-106 AC4: was app/admin/members/[id]/page.tsx. Static export requires
+// every dynamic route segment to be resolvable via generateStaticParams() at
+// build time, which is impossible for a member id that only exists at
+// runtime. Moved to a query-string route (`/admin/members?id=...`) -- no
+// path-style links to this page were circulating.
 function MemberManagementContent() {
   const { user } = useAuth()
   const { currentLeague } = useLeague()
@@ -28,9 +33,9 @@ function MemberManagementContent() {
   const [showPasswordResetLink, setShowPasswordResetLink] = useState(false)
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const params = useParams()
+  const searchParams = useSearchParams()
   const router = useRouter()
-  const memberId = params.id as string
+  const memberId = searchParams.get("id") ?? ""
 
   useEffect(() => {
     const fetchMember = async () => {
@@ -273,7 +278,7 @@ function MemberManagementContent() {
                   <Label className="text-sm font-medium">Password Reset</Label>
                   <div className="text-xs text-muted-foreground">Generate a temporary password for this member</div>
                 </div>
-                
+
                 <Button
                   variant="outline"
                   className="w-full border-2 border-black"
@@ -356,7 +361,14 @@ function MemberManagementContent() {
 export default function MemberManagementPage() {
   return (
     <AdminGuard>
-      <MemberManagementContent />
+      <Suspense fallback={
+        <div className="space-y-6">
+          <Skeleton className="h-8 w-64" />
+          <Skeleton className="h-[400px] w-full" />
+        </div>
+      }>
+        <MemberManagementContent />
+      </Suspense>
     </AdminGuard>
   )
 }
