@@ -51,7 +51,7 @@ class LeagueMembership(BaseModel):
     isActive: bool
     isAdmin: bool
     isPaid: bool
-    status: Literal["active", "pending", "rejected"]
+    status: Literal["active", "pending", "rejected", "removed"]
 
 
 class UserSummary(BaseModel):

@@ -31,7 +31,7 @@ export type LeagueMembership = {
   isActive: boolean
   isAdmin: boolean
   isPaid: boolean
-  status: "active" | "pending" | "rejected"
+  status: "active" | "pending" | "rejected" | "removed"
 }
 
 // NOTE: JoinRequest used to live here. Dropped (CR-105-FINDINGS.md Table 3/4,

@@ -22,6 +22,7 @@ import os
 import uuid
 
 import pytest
+from bson import ObjectId
 
 pytestmark = pytest.mark.skipif(
     not os.environ.get("MONGODB_URI"), reason="MONGODB_URI not set -- live-Mongo smoke test skipped"
@@ -134,3 +135,56 @@ async def test_create_pick_draw_bug_fix_against_live_data():
 
     assert home_pick.result == "draw", f"expected draw, got {home_pick.result!r} -- bug fix regressed"
     assert away_pick.result == "draw", f"expected draw, got {away_pick.result!r} -- bug fix regressed"
+
+
+@pytest.mark.asyncio
+async def test_removed_member_status_does_not_break_reads():
+    """CR-107 regression: `LeagueMembership.status`'s Literal used to omit
+    "removed", the exact value `remove_member_from_league` writes -- every read
+    path that shapes *all* members into `LeagueMembership` Pydantic models
+    (get_league_members_with_user_data, and by extension the scoreboard/results
+    functions that call it) 400'd the instant a league had one removed member.
+    """
+    from app.db.auth import create_user
+    from app.db.leagues import create_league
+    from app.db.memberships import (
+        create_league_membership,
+        get_league_members_with_user_data,
+        remove_member_from_league,
+    )
+    from app.db.results import get_league_results, get_scoreboard_with_picks
+    from app.db.mongodb import Collections, get_database
+
+    owner = await create_user(f"live-owner-{uuid.uuid4().hex[:8]}@example.com", "password123")
+    league = await create_league("Removed Member League", "desc", "EPL", "2025/2026", True, False, owner.id)
+    await create_league_membership(league.id, owner.id, "Owner Team", is_admin=True)
+
+    kept_user = await create_user(f"live-kept-{uuid.uuid4().hex[:8]}@example.com", "password123")
+    kept_membership = await create_league_membership(league.id, kept_user.id, "Kept Team")
+
+    removed_user = await create_user(f"live-removed-{uuid.uuid4().hex[:8]}@example.com", "password123")
+    removed_membership = await create_league_membership(league.id, removed_user.id, "Removed Team")
+    await remove_member_from_league(league.id, removed_membership.id, owner.id)
+
+    # AC2 -- reading all members (including the "removed" one) must not 400
+    # with a Pydantic validation error.
+    members = await get_league_members_with_user_data(league.id)
+    statuses = {m.id: m.status for m in members}
+    assert statuses[removed_membership.id] == "removed"
+    assert statuses[kept_membership.id] == "active"
+
+    # AC3 -- "removed" being a valid enum value now must not surface removed
+    # members as active anywhere that already filters on status == "active".
+    scoreboard = await get_scoreboard_with_picks(league.id)
+    scoreboard_ids = {p.id for p in scoreboard["players"]}
+    assert removed_user.id not in scoreboard_ids
+    assert kept_user.id in scoreboard_ids
+
+    # get_league_results only returns data once last_completed_week > 0.
+    await get_database()[Collections.LEAGUES].update_one(
+        {"_id": ObjectId(league.id)}, {"$set": {"last_completed_week": 1}},
+    )
+    results = await get_league_results(league.id)
+    result_ids = {u.id for u in results.users}
+    assert removed_user.id not in result_ids
+    assert kept_user.id in result_ids
