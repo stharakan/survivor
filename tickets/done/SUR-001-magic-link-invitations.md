@@ -1,5 +1,83 @@
 # Magic Link League Invitations
 
+**Status**: Done (verified 2026-08-09)
+
+Shipped as part of the CR-105 Python port (invitations were Rank 6 of that port,
+per `CR-105-FINDINGS.md` Table 1, 6.1-6.10) plus CR-106's static-export route
+migration, rather than as work tracked against this ticket directly. Verified
+against the current codebase AC-by-AC; nothing further to build.
+
+- **AC1 (Invitation creation)**: `POST /api/leagues/{league_id}/invitations`
+  (`api/app/routers/invitations.py:89-100`) requires an admin membership
+  (`get_membership_for_user(...).isAdmin`, line 96-97) before calling
+  `create_league_invitation` (`api/app/db/invitations.py:28-58`), which accepts
+  `maxUses`/`expiresAt` (`api/app/models/requests.py:99-103`,
+  `CreateInvitationRequestBody`) and generates the token. Frontend: the
+  "Create Invitation" dialog in `app/admin/page.tsx` (invitations tab, ~lines
+  473-545) posts to that endpoint and prepends the new invitation to the list.
+- **AC2 (Acceptance page)**: `GET /api/invite/{token}` is intentionally public
+  (no `verify_auth_token` call — `api/app/routers/invitations.py:69-75`) and
+  returns league/creator summary + validity flags via
+  `get_invitation_by_token` (`api/app/db/invitations.py:104-140`, computes
+  `isExpired`/`isAtMaxUses`/`isValid`). `app/invite/page.tsx` renders the
+  league name, sport, member count, and expiry/usage state from that payload.
+- **AC3 (Account-flow integration)**: `app/invite/page.tsx:264-273` links
+  unauthenticated visitors to `/login?redirect=/invite?token=...` and
+  `/register?redirect=...`; `app/login/page.tsx:25-35` and
+  `app/register/page.tsx` read `redirect`, run it through
+  `getSafeRedirectUrl` (`lib/utils.ts:108`), and `router.push` back to the
+  invite page post-auth, where the now-authenticated user submits a team name
+  and `POST /api/invite/{token}/accept` (`api/app/routers/invitations.py:58-67`
+  → `accept_invitation`, `api/app/db/invitations.py:143-177`) creates the
+  membership and the page redirects to `/leagues`.
+- **AC4 (Usage limits)**: `get_invitation_by_token` computes
+  `is_at_max_uses = maxUses and currentUses >= maxUses`
+  (`api/app/db/invitations.py:131`); `accept_invitation` rejects with
+  "Invitation has reached maximum uses" whenever `isValid` is false for that
+  reason (`api/app/db/invitations.py:159-160`), and increments `currentUses`
+  on every successful accept (line 172-175). Note: the invitation's `isActive`
+  DB flag itself is not flipped to `false` on hitting max uses (only on
+  explicit revoke) — validity is computed dynamically from
+  `isActive && !expired && !atMax` — but the observable behavior the AC asks
+  for (further accepts are rejected, UI shows "reached maximum uses") is
+  correct.
+- **AC5 (Admin management)**: `GET /api/leagues/{league_id}/invitations`
+  (admin-gated, `api/app/routers/invitations.py:79-88`) backs the "Active
+  Invitations" list in `app/admin/page.tsx` (~lines 545-625), which shows
+  uses/max, expiry, and a working "Revoke" button calling
+  `DELETE /api/invitations/{invitation_id}`
+  (`api/app/routers/invitations.py:27-46`). That handler was hardened beyond
+  the original TS route during the port — it now resolves the invitation's
+  owning league via `get_invitation_league_id` and requires the caller be an
+  admin of *that* league (lines 36-40), fixing a real authz gap the old TS
+  code's own comment admitted ("any authenticated user for now").
+  `revoke_invitation` sets `isActive: false` (`api/app/db/invitations.py:196-202`),
+  which flows into `isValid` on the next lookup.
+- **AC6 (Expired/invalid link handling)**: `app/invite/page.tsx:118-161` shows
+  a dedicated "Invalid Invitation" card with the server's error message and a
+  "Browse Available Leagues" fallback link when `GET /api/invite/{token}`
+  fails (not-found); the same page's `!invitation.invitation.isValid` branch
+  (lines 245-257, 326-337) surfaces expired/max-uses/revoked states inline
+  before the join form.
+- **Security**: token generated via `secrets.token_hex(32)`
+  (`api/app/db/invitations.py:35`) — 32 cryptographically-secure random bytes,
+  64 hex chars, matching the ticket's `crypto.randomBytes(32)` requirement.
+  Admin permission is checked on create, list, and revoke (see above); accept
+  requires `verify_auth_token`.
+- **Route restructuring**: CR-106 (static export) replaced the dynamic
+  `/invite/[token]` and `/admin/invitations` path-param routes with a
+  query-string route (`/invite?token=...`, `app/invite/page.tsx:18-22`
+  explains why) and a redirect stub (`app/admin/invitations/page.tsx` →
+  `/admin?tab=invitations`) into the main admin dashboard's invitations tab.
+  Confirmed both are live, not stale/orphaned routes.
+- **Gap noted, not blocking**: no dedicated automated test file exists for
+  the invitations data-layer or routes (`api/tests/` has no
+  `test_invitations*.py`); verification here is by direct code read against
+  every AC's Given/When/Then, not by an automated suite. Consistent with how
+  this repo has verified other CR-105/106/107 tickets to date.
+
+---
+
 **Ticket ID**: SUR-001  
 **Title**: Implement Magic Link League Invitation System  
 **Type**: Feature  

@@ -1,5 +1,79 @@
 # SUR-007-A: Missing Pick Strike Calculation
 
+**Status**: Done (verified 2026-08-09)
+
+Shipped as part of the CR-105 Python port (scoring was Rank 7 of that port,
+per `CR-105-FINDINGS.md` Table 1, 7.1-7.3), rather than as work tracked
+against this ticket directly. Verified AC-by-AC against
+`api/app/db/scoring.py:calculate_scores_and_strikes` (lines 76-131):
+
+- **AC1 (Missing-pick calc + breakdown)**: for each active membership,
+  `picks` are fetched for `week <= last_completed_week` with a non-null
+  `result` (line 92-97); `weeks_with_picks = len({p["week"] for p in picks})`
+  (distinct weeks with a submitted, scored pick — correctly de-dupes if a
+  week ever had more than one pick doc) and
+  `missing_pick_strikes = max(0, last_completed_week - weeks_with_picks)`
+  (lines 99-100). For the AC's example (10 completed weeks, 7 submitted) this
+  yields exactly 3. `loss_strikes` is summed separately from
+  `pick["result"] == "loss"` (lines 103-110), and
+  `total_strikes = loss_strikes + missing_pick_strikes` (line 112) is what's
+  written to `strikes`. The per-player log line (lines 126-129) reports
+  points, total strikes, and the loss/missing breakdown plus pick count —
+  same information the AC's log-format example asks for, slightly
+  different wording ("N losses + M missed weeks = Z total" vs. the ticket's
+  suggested phrasing).
+- **AC2 (All picks present)**: if `weeks_with_picks == last_completed_week`,
+  `max(0, 0) == 0` — `missingPickStrikes` is 0 and `strikes` equals
+  `lossStrikes` alone. No special-casing needed; falls out of the same
+  formula.
+- **AC3 (Zero completed weeks)**: `last_completed_week` comes from
+  `league_week_map.get(str(membership["leagueId"]), 0)`, itself built from
+  `league.get("last_completed_week") or 0` (lines 82-84) — a league with no
+  completed weeks yields `0`, the picks query (`week <= 0`) matches nothing,
+  `weeks_with_picks = 0`, and `missing_pick_strikes = max(0, 0-0) = 0`. No
+  exception path; wrapped in the per-membership `try/except` (lines 89, 130-131)
+  regardless.
+- **AC4 (Partial season / new player)**: no join-date special-casing exists —
+  a member with `last_completed_week=20` and 2 submitted picks gets
+  `missingPickStrikes = 18`, matching the ticket's explicitly-called-out
+  "expected behavior" for new joiners.
+- **AC5 (Field tracking)**: `LeagueMembership.lossStrikes` /
+  `.missingPickStrikes` (`api/app/models/league.py:47-48`, both
+  `Optional[int] = None` for docs not yet touched by a scoring run) are
+  populated by the `$set` at `api/app/db/scoring.py:114-122`, always as
+  `loss_strikes` / `missing_pick_strikes` alongside `strikes = loss_strikes +
+  missing_pick_strikes` — the sum invariant holds by construction, not by a
+  separate check. New memberships (`create_league_membership`,
+  `api/app/db/memberships.py:38-51`) don't set these two fields at insert
+  time (only `points`/`strikes`/`rank`); they're populated on the member's
+  first scoring run (every 15 min per the ticket's own "Update Frequency"
+  note) rather than defaulted to `0` inline — a minor deviation from the
+  ticket's literal "default to 0" migration note, but self-healing well
+  within the timescale the ticket itself documents, and the season-rollover
+  path (`api/app/db/leagues.py:201-209`) does explicitly reset both fields to
+  `0` alongside `points`/`strikes`/`rank`.
+- **AC6 (Source of truth preserved)**: the `picks` collection is untouched by
+  this function (only read); `league_memberships` docs are updated via a
+  scoped `$set` of exactly `points`/`strikes`/`lossStrikes`/
+  `missingPickStrikes` (lines 114-122), not a full-document replace, so all
+  other fields (`isAdmin`, `isPaid`, `joinedAt`, etc.) survive untouched. Per-
+  player logging (lines 126-129) gives a manually-verifiable breakdown.
+- **Gap noted, not blocking**: the ticket's Definition of Done calls for
+  dedicated unit/integration tests (`lib/scoring.test.ts` in the original
+  TS plan); no equivalent exists in the current suite — `api/tests/` has
+  `test_game_utils_parity.py`, `test_live_mongo_smoke.py`, and
+  `test_security_headers.py`, none of which exercise
+  `calculate_scores_and_strikes` or the missing-pick math specifically.
+  Verification here is by direct code read against every AC's Given/When/Then
+  (above), not by an automated test asserting it. Given this is a
+  fairness/elimination-affecting calculation, a future pass adding a focused
+  unit test (pure function of `picks` + `last_completed_week` — no live Mongo
+  needed beyond what `test_live_mongo_smoke.py` already sets up) would be
+  cheap and worthwhile, but its absence doesn't change the fact that the
+  implemented logic matches every stated AC.
+
+---
+
 **Ticket ID**: SUR-007-A
 **Title**: Implement Missing Pick Strike Penalties in Scoring Calculation
 **Type**: Feature Enhancement

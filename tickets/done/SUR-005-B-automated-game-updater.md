@@ -1,5 +1,68 @@
 # Software Development Ticket
 
+**Status**: Done (verified 2026-08-09)
+
+Shipped as part of the CR-105 Python port (game updater was Rank 7 of that
+port, per `CR-105-FINDINGS.md` Table 1, 7.4-7.9), rather than as work tracked
+against this ticket directly. Verified AC-by-AC against the current code:
+
+- **AC1 (Extended-range bulk query)**: `update_game_scores`
+  (`api/app/db/game_updater.py:437-449`) builds `date_from`/`date_to` from
+  `BULK_QUERY_DAYS_BACK`/`FORWARD` (default 7/7) and calls `_fetch_bulk_games`
+  (`api/app/db/game_updater.py:106-125`), which hits
+  `/v4/competitions/{code}/matches?dateFrom=...&dateTo=...`. This is a
+  superset of the ticket's literal "today → +1 week" (it also looks back 7
+  days), which only strengthens reschedule-catching, not a regression.
+- **AC2 (DB overdue scan)**: `_find_overdue_games`
+  (`api/app/db/game_updater.py:173-197`) queries
+  `{"$or": [{"startTime": {"$lt": now}}, {"date": {"$lt": now}}], "status": "not_started"}`
+  — matches the AC's `startTime < now AND status = 'not_started'` (plus a
+  `date` fallback for older docs).
+- **AC3 (Smart hybrid processing)**: for each overdue game,
+  `update_game_scores` (`api/app/db/game_updater.py:465-480`) first calls
+  `_find_game_in_bulk_response` (`api/app/db/game_updater.py:212-242`,
+  matches by `externalId` then by date+team-name fallback) and only calls
+  `_fetch_individual_game` (line 476, hitting `/v4/matches/{id}`) when no
+  bulk match was found and an `externalId` exists.
+- **AC4 (Status/score sync)**: `_update_game_in_database`
+  (`api/app/db/game_updater.py:245-291`) writes `status` (mapped via
+  `_map_api_status_to_internal`, lines 82-91: SCHEDULED/TIMED→not_started,
+  LIVE/IN_PLAY/PAUSED/HALFTIME→in_progress,
+  FINISHED/AWARDED/POSTPONED/CANCELLED/SUSPENDED→completed),
+  `startTime`/`date`, `homeScore`, `awayScore`, and `externalId` back to the
+  matched DB game.
+- **AC5 (Scoring trigger)**: `_check_and_trigger_scoring`
+  (`api/app/db/game_updater.py:297-315`) checks
+  `db[PICKS].count_documents({"gameId": {"$in": completed_game_ids}})` and, if
+  > 0, calls `run_scoring_calculation()` directly (the Python in-process
+  equivalent of the TS route's HTTP call to `/api/admin/recompute-scores`,
+  which also exists standalone at
+  `api/app/routers/admin_scoring.py:20-24` for the cron script). Also
+  independently re-triggers scoring if a completed game's score changed and
+  picks were reset for re-scoring (`update_game_scores`, lines 502-504) — a
+  correctness improvement beyond the ticket's literal ask.
+- **AC6 (HTTP client script)**: `scripts/update-game-scores.js` POSTs to
+  `${API_BASE_URL}/api/admin/update-game-scores` with an `X-API-Key` header
+  (lines 9-35), matching the route at
+  `api/app/routers/admin_scoring.py:27-31`, which is gated by
+  `require_scoring_api_key` (`api/app/core/auth_deps.py:188-195`, compares
+  `X-API-Key` header against the `SCORING_API_KEY` env var).
+- **AC7 (Rate limiting)**: `_fetch_individual_game`
+  (`api/app/db/game_updater.py:128-150`) sleeps
+  `REQUEST_DELAY_MS / 1000` (default 6000ms → 6s, i.e. ≤10 calls/min) before
+  each individual lookup; the bulk query is a single call.
+- **AC8 (Logging)**: `_log` (`api/app/db/game_updater.py:29-30`) timestamps
+  every step; `update_game_scores` logs bulk-fetch, overdue-scan,
+  per-game-match, and a full summary block (bulk games processed, overdue
+  found, individual calls made, games updated, games completed, picks reset,
+  leagues updated, execution time — lines 507-521).
+- **Gap noted, not blocking**: no dedicated automated test file exists for
+  `game_updater.py`'s hybrid/overdue logic (`api/tests/` has no
+  `test_game_updater*.py`); verified by direct code read against each AC,
+  consistent with how this repo has verified other CR-105/106/107 tickets.
+
+---
+
 ## Ticket Header
 - **Ticket ID**: SUR-005-B
 - **Title**: Automated Game Status and Score Updater with Hybrid Reschedule Detection
