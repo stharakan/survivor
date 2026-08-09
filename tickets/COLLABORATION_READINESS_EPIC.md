@@ -2,7 +2,13 @@
 
 **Epic ID**: COLLAB-001
 **Priority**: High
-**Status**: Proposed (pending review)
+**Status**: Partially in progress — re-triaged 2026-08-09. Phase 2's architecture
+spike (CR-101) ran to completion and shipped: the Python backend port (CR-105) and
+frontend static-export cutover (CR-106, plus its follow-on bugfix CR-107) are all
+**Done** and moved to `tickets/done/`. Phase 0 (quick wins), Phase 1 (safety-net
+tests — except CR-007, which is also done), and Phase 3 (frontend reorg) have not
+been started. See the per-ticket `**Status**` line on each sub-ticket below for
+detail and evidence.
 **Estimated Story Points**: ~55 points (was ~70; SQL execution removed pending arch spike)
 **Timeline**: Phased — quick wins in ~1-2 weeks; architecture spike gates the rest
 
@@ -214,7 +220,12 @@ these before the collaborator is active; none of them are blocked on CR-101.**
 **Priority**: Critical (effectively #1 — do first)
 **Story Points**: 2
 **Timeline**: 1 day
-**Status**: Proposed
+**Status**: Done — fixed as a side effect of the CR-105/CR-106 Python-backend
+migration, not as a standalone TS patch. `api/app/routers/picks.py::create_pick_route`
+verifies the JWT server-side and `CreatePickRequest` has no client-supplied `userId`
+field at all to spoof — the route's own docstring cites this as "FIXED per Addendum 2
+/ Table 1 5.4". No standalone ticket file exists for this fix; it shipped inside
+`tickets/done/CR-105-PHASE2-REPORT.md`'s route port. Re-verified 2026-08-09.
 
 **User Story**: As a league member, I want pick submission to be authenticated so
 that no one can submit picks on my behalf.
@@ -241,7 +252,9 @@ profile and independent of any FE/BE split. Highest-priority item in the epic.
 **Priority**: High
 **Story Points**: 3 (→ 5 if built polyglot up front)
 **Timeline**: 1 day
-**Status**: Proposed
+**Status**: Unstarted — no `.github/` directory exists in the repo as of 2026-08-09.
+Still the single biggest hidden risk called out below, and now doubly true with a
+second (Python) codebase that also has no CI.
 
 **User Story**: As a collaborator, I want PRs to be automatically checked so that a
 type error or broken test can't silently merge.
@@ -274,7 +287,8 @@ rebuilt when the Python backend lands.
 **Priority**: High
 **Story Points**: 5
 **Timeline**: 2-3 days
-**Status**: Proposed
+**Status**: Unstarted — no GCP deploy script found anywhere in `scripts/` or
+elsewhere as of 2026-08-09; scheduled jobs are presumably still deployed by hand.
 
 **User Story**: As either developer, I want to deploy the scheduled backend-update
 jobs from the CLI using version-controlled config, so that I'm not manually copying
@@ -314,7 +328,11 @@ FE/BE-separation experiment.
 **Priority**: High
 **Story Points**: 5
 **Timeline**: 2-3 days
-**Status**: Proposed
+**Status**: Unstarted — no "sandbox" concept exists in `scripts/` or
+`scripts/README.md` as of 2026-08-09. `scripts/create-epl-league.ts` creates the
+real 2025/2026 league, not an isolated/resettable sandbox; `scripts/clone-prod-to-dev.ts`
+(recently touched) requires prod access, which is the opposite of what AC4/AC5 ask
+for. Nothing here satisfies this ticket's ACs yet.
 
 Game week end -> push data down to dev
 
@@ -354,7 +372,9 @@ backend experiment (CR-101) gets validated.
 **Priority**: Medium → Medium-Low
 **Story Points**: 2
 **Timeline**: 1 day
-**Status**: Proposed
+**Status**: Unstarted — the exact bug this ticket describes is still present
+verbatim as of 2026-08-09: `package.json`'s `calculate-scores` script points at
+`scripts/calculate-scores.ts`, but the file on disk is `scripts/calculate-scores.js`.
 
 **User Story**: As a new developer, I want the operational scripts to be documented
 and runnable so I don't run the wrong thing against the wrong environment.
@@ -385,7 +405,9 @@ language — keep those even if the rest is deferred.
 **Priority**: High
 **Story Points**: 3
 **Timeline**: 1-2 days
-**Status**: Proposed
+**Status**: Unstarted — no test file for `lib/auth-utils.ts` exists as of
+2026-08-09 (only `lib/__tests__/game-utils-parity.test.ts` and
+`lib/__tests__/scoring.test.ts` exist).
 
 **Description**: `validateAdminPermission` and `verifyLeagueMembership` are
 security-critical and have zero coverage.
@@ -406,7 +428,14 @@ this is why CR-008 survives where CR-007 (below) is now held.
 **Priority**: High → **Hold / reframe** (sequence after CR-101)
 **Story Points**: 3
 **Timeline**: 1-2 days
-**Status**: Proposed (on hold pending CR-101)
+**Status**: Done — superseded by a stronger version of what this ticket asked for.
+`lib/__tests__/game-utils-parity.test.ts` (paired with
+`tickets/done/CR-105-FINDINGS.md`'s Python counterpart `api/tests/test_game_utils_parity.py`)
+is a golden-fixture parity test built per `tickets/done/CR-105-FINDINGS.md` (Table 2
+/ Addendum 2) — exactly the "portable behavioral specs" of AC4, and it goes further
+by actually enforcing TS/Python parity rather than just testing TS in isolation.
+CR-101 has also since resolved (GO), so the hold condition no longer applies either
+way. Re-verified 2026-08-09.
 
 **Description**: `game-utils.ts` holds the single source of truth for game status
 and pick-lock rules (`computeGameStatus`, `hasGameweekStarted`, `arePicksLocked`,
@@ -441,7 +470,14 @@ reframed accordingly and is now the gate for everything DB/backend-adjacent.
 **Priority**: High
 **Story Points**: 5
 **Timeline**: 2-3 days
-**Status**: Proposed
+**Status**: Done — see `tickets/done/CR-101-A-cost-hosting-analysis.md`,
+`CR-101-B-migration-surface-effort.md`, `CR-101-C-contract-mechanism.md`,
+`CR-101-D-repo-topology-ci.md`, and the umbrella `CR-101-FINDINGS.md` ("Research
+complete (AC1–AC4) · AC7 go/no-go DECIDED: GO"). Moved to `tickets/done/` 2026-08-09
+along with its downstream execution: `CR-105-full-migration-audit.md` +
+`CR-105-FINDINGS.md` + Phase 1/2 reports (Python backend build, Done),
+`CR-106-frontend-static-export-cutover.md` (frontend cutover, Done — 8/8 ACs), and
+`CR-107-membership-removed-status-enum-gap.md` (follow-on bugfix, Done).
 
 **User Story**: As the team, we want a cost + effort assessment of separating the
 frontend and backend with a Python backend and typed contracts (keeping MongoDB), so
@@ -488,7 +524,12 @@ TS monolith and get the typed-contract benefit via TS-only means instead.
 **Priority**: Medium
 **Story Points**: 5
 **Timeline**: 2-3 days
-**Status**: Proposed
+**Status**: Unstarted — and worse than when written. The duplication was not
+consolidated; it was *copied* into the Python port during the CR-105 migration.
+`api/app/db/scoring.py::calculate_scores_and_strikes` and `api/app/db/results.py`
+(season summary) each independently encode `strikes >= 2` elimination logic,
+mirroring the original `lib/scoring.ts` vs `lib/db.ts::getSeasonSummary` split,
+which is also still present unchanged. Re-verified 2026-08-09.
 **Blocked by / coordinated with**: CR-101 (target language depends on the decision)
 
 **Description**: Survivor scoring/elimination is implemented twice — `lib/scoring.ts`
@@ -519,7 +560,12 @@ against DEC-1's "split scoring across a language boundary" cost.
 **Priority**: Medium
 **Story Points**: 3
 **Timeline**: 1 day
-**Status**: Proposed
+**Status**: Unstarted — `README.md:59-61` still opens with "This frontend
+application expects a Django REST API backend..." plus a full Django endpoint spec,
+untouched by the CR-105/CR-106 migration despite the architecture direction having
+been decided and shipped. The "Future Enhancements" section also still lists
+features that already shipped (e.g. the SUR-001 invitation system). Re-verified
+2026-08-09.
 **Coordinated with**: CR-101 (rewrite once, after the architecture direction is set)
 
 **Description**: The 697-line README still documents a **Django REST API backend**
@@ -542,7 +588,9 @@ now gated on the *broader* architecture decision, not just the DB choice.
 ### CR-102: Execute SQL Migration — **CLOSED / WON'T-DO (pending CR-101)**
 **Type**: Migration
 **Priority**: Deprioritized (was TBD, ~21 pts)
-**Status**: Closed pending CR-101 — retained here for the record
+**Status**: Closed / won't-do — confirmed correct on re-verification 2026-08-09.
+CR-101 landed on "stay on MongoDB" and CR-105/CR-106 built the entire Python
+backend on Mongo (motor/pymongo), consistent with this closure. No change needed.
 
 **Re-eval note:** Following DEC-2. The SQL migration's core benefit — a typed schema
 as a two-dev guardrail — is undercut by a SQL-light collaborator, and the same
@@ -562,7 +610,9 @@ frontend and does not change their priority.
 **Priority**: Medium
 **Story Points**: 13
 **Timeline**: 1-2 weeks
-**Status**: Proposed
+**Status**: Unstarted — `app/admin/page.tsx` is still 803 lines and
+`app/make-picks/page.tsx` still 574 lines as of 2026-08-09, matching this ticket's
+original line counts almost exactly; no split into hooks/components has happened.
 
 **Description**: `app/admin/page.tsx` (~865 lines) holds overview/members/invitations/
 settings in one component + state block — a guaranteed merge-conflict magnet.
@@ -586,7 +636,10 @@ admin** — don't refactor speculatively.
 **Priority**: Low
 **Story Points**: 2
 **Timeline**: 1 day
-**Status**: Proposed
+**Status**: Unstarted — `components/admin-guard.tsx` (75 lines) and
+`components/league-guard.tsx` (44 lines) remain separate, and the
+`console.log("AdminGuard Debug:", ...)` call this ticket calls out is still at
+`admin-guard.tsx:18` as of 2026-08-09.
 
 **Description**: `components/admin-guard.tsx` and `league-guard.tsx` are ~90%
 duplicate auth/redirect logic; `admin-guard.tsx` has leftover `console.log`
@@ -607,7 +660,10 @@ statements in production code. Consolidate into one guard/shared hook.
 **Priority**: Low
 **Story Points**: 2
 **Timeline**: 1 day
-**Status**: Proposed
+**Status**: Unstarted — ironic proof point: 18 ticket files in `tickets/` still
+lack a `Status` field as of 2026-08-09 (confirmed by grep), which is exactly what
+this ticket exists to fix. `CLAUDE.md` still doesn't document the `components/ui/`
+boilerplate-vs-feature-UI split either.
 
 **Description**: Small legibility fixes for a newcomer: (a) add a `**Status**` field
 to the ~10 tickets missing one so done-vs-backlog is clear; (b) note in `CLAUDE.md`

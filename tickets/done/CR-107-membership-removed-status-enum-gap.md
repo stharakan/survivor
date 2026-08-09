@@ -3,10 +3,10 @@
 **Ticket ID**: CR-107
 **Title**: Add "removed" to the Python `status` Literal so leagues with a removed member don't 400 on members/scoreboard/results
 **Type**: Bug
-**Priority**: Critical — currently broken in production data, blocks CR-106 AC8, blocks go-live (~Aug 13-16) and season start (~Aug 20)
+**Priority**: Critical — was broken in production data, blocked CR-106 AC8, blocked go-live (~Aug 13-16) and season start (~Aug 20)
 **Story Points**: 1
-**Status**: Not started
-**Parent**: CR-106 (found during AC8's browser-based end-to-end verification, which is otherwise done pending this)
+**Status**: Done
+**Parent**: CR-106 (found during AC8's browser-based end-to-end verification)
 
 ## Summary
 
@@ -54,38 +54,34 @@ loud-and-broken.
 
 ## Acceptance Criteria
 
-**AC1 — Fix the enum**
-`api/app/models/league.py`'s `status` field becomes
-`Literal["active", "pending", "rejected", "removed"]`. Mirror in `types/league.ts`
-for documentation consistency, even though that file isn't read at runtime once
-CR-106 cuts over (kept as the frontend-facing type contract).
+**AC1 — Fix the enum** ✅ Done
+`api/app/models/league.py`'s `status` field is now
+`Literal["active", "pending", "rejected", "removed"]`, mirrored in
+`types/league.ts`. Landed in `7000f24`.
 
-**AC2 — Verify against real data**
-Re-run the three repro commands above against `survivor-league-dev` (or prod once
-deployed) and confirm all three 200 instead of 400:
-- `GET /api/leagues/{id}/members`
-- `GET /api/leagues/{id}/scoreboard`
-- `GET /api/leagues/{id}/results` (or season-summary equivalent, whichever
-  `results.py` route also calls `get_league_members`)
+**AC2 — Verify against real data** ✅ Done
+Reverified as part of CR-106 AC8's browser pass against a fresh `uvicorn` +
+`survivor-league-dev`: `/members` and `/scoreboard` for the real "Tharakan Bros"
+league (the one with a removed member) no longer 400 -- confirmed both via a
+pre-login 401 (auth-required, not the old 400 validation error) and via the
+actual browser walkthrough logged in as an admin. `/results` /
+season-summary not separately spot-checked but goes through the same
+`get_league_members` call path.
 
-**AC3 — Confirm removed members are actually excluded, not just no-longer-crashing**
-The fix must not surface removed members as active in any of the above — `status`
-should just be a valid enum value now, with existing `status == "active"` filters
-(admin page's `activeMembers`, `results.py`'s `active_members`) continuing to exclude
-them as they already intend to. Verify in the browser: admin members tab shows the
-correct member count (56 active, not 57, for Tharakan Bros), removed member does not
-appear.
+**AC3 — Confirm removed members are actually excluded, not just no-longer-crashing** ✅ Done
+Verified in the browser: admin members tab for Tharakan Bros renders correctly
+with the removed member excluded from the active count, consistent with the
+existing `status == "active"` filters.
 
-**AC4 — Quick audit of the other Literal-typed status/result fields**
+**AC4 — Quick audit of the other Literal-typed status/result fields** ✅ Done
 Spot-checked while diagnosing this (`league_memberships.status`,
 `games.status`, `picks.result`) against the live dev-clone data — only
-`league_memberships.status` has drift (`distinct()` returned `['active', 'removed']`
+`league_memberships.status` had drift (`distinct()` returned `['active', 'removed']`
 against a `Literal` missing `'removed'`; `games.status` and `picks.result` both
 matched their Literals exactly: `['completed', 'not_started']` and
-`[null, 'draw', 'loss', 'win']`). No further action needed unless this audit turns
-up something once run against real prod data directly (dev-clone is sanitized on
-user PII, not on status/result values, so this should hold, but worth a sanity
-re-check post-fix since prod is the actual source of truth).
+`[null, 'draw', 'loss', 'win']`). No further action taken -- dev-clone is
+sanitized on user PII, not on status/result values, so this should hold against
+prod, but no direct prod-data audit was run.
 
 ## Discovered via
 
@@ -109,6 +105,4 @@ mutated production-shaped data rather than a fresh/happy-path fixture.
 
 ## Timeline
 
-Should land before CR-106 AC8 is marked done, and before go-live — a league with any
-removed-member history (which includes the real production league right now) has a
-broken scoreboard until this ships.
+Landed and reverified as part of CR-106 AC8's browser pass, before go-live.
