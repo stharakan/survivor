@@ -67,7 +67,12 @@ async function cloneProdToDev() {
     if (collectionName === Collections.USERS) {
       for (let i = 0; i < docs.length; i++) {
         const doc = docs[i]
-        const devEmail = `user${i + 1}@dev.local`
+        // Not `@dev.local` -- `.local` is an IANA special-use TLD that
+        // Pydantic's EmailStr (api/app/models/requests.py) rejects outright,
+        // unlike the original Zod validator, so a `.local` seed email can
+        // never log in against the Python backend. `dev.internal` isn't
+        // reserved and still reads as obviously non-production.
+        const devEmail = `user${i + 1}@dev.internal`
         emailMappings.push({ original: doc.email, dev: devEmail })
         doc.email = devEmail
         doc.password = devPasswordHash
