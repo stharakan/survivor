@@ -38,7 +38,7 @@ function PlayerProfileContent() {
     const fetchData = async () => {
       if (user && currentLeague && playerId) {
         try {
-          const playerData = await getPlayerProfile(playerId, String(currentLeague.id))
+          const playerData = await getPlayerProfile(playerId, currentLeague.id)
 
           if (playerData) {
             setPlayer(playerData)

@@ -95,7 +95,7 @@ export async function createLeague(
   })
 }
 
-export async function getLeague(leagueId: number): Promise<League> {
+export async function getLeague(leagueId: string): Promise<League> {
   return apiRequest(`/leagues/${leagueId}`)
 }
 
@@ -103,18 +103,18 @@ export async function getUserLeagues(userId: string): Promise<LeagueMembership[]
   return apiRequest(`/users/${userId}/leagues`)
 }
 
-export async function getLeagueMembers(leagueId: number | string): Promise<LeagueMembership[]> {
+export async function getLeagueMembers(leagueId: string): Promise<LeagueMembership[]> {
   return apiRequest(`/leagues/${leagueId}/members`)
 }
 
-export async function getScoreboard(leagueId: number): Promise<{
+export async function getScoreboard(leagueId: string): Promise<{
   players: Player[]
   currentGameWeek: number | null
 }> {
   return apiRequest(`/leagues/${leagueId}/scoreboard`)
 }
 
-export async function getLeagueResults(leagueId: number): Promise<{
+export async function getLeagueResults(leagueId: string): Promise<{
   users: Array<{
     id: string
     name: string
@@ -129,7 +129,7 @@ export async function getLeagueResults(leagueId: number): Promise<{
   return apiRequest(`/leagues/${leagueId}/results`)
 }
 
-export async function getProfile(userId: string, leagueId: number): Promise<User> {
+export async function getProfile(userId: string, leagueId: string): Promise<User> {
   return apiRequest(`/users/${userId}?league_id=${leagueId}`)
 }
 
@@ -140,12 +140,12 @@ export async function updateUserProfile(userId: string, updates: { name?: string
   })
 }
 
-export async function getLeagueMember(leagueId: number | string, memberId: number | string): Promise<LeagueMembership | null> {
+export async function getLeagueMember(leagueId: string, memberId: string): Promise<LeagueMembership | null> {
   return apiRequest(`/leagues/${leagueId}/members/${memberId}`)
 }
 
 export async function updateMemberStatus(
-  leagueId: number,
+  leagueId: string,
   memberId: string,
   updates: { isPaid?: boolean; isAdmin?: boolean; teamName?: string },
 ): Promise<LeagueMembership> {
@@ -155,14 +155,14 @@ export async function updateMemberStatus(
   })
 }
 
-export async function removeMemberFromLeague(leagueId: number | string, memberId: number | string): Promise<void> {
+export async function removeMemberFromLeague(leagueId: string, memberId: string): Promise<void> {
   return apiRequest(`/leagues/${leagueId}/members/${memberId}`, {
     method: 'DELETE',
   })
 }
 
 export async function updateLeagueSettings(
-  leagueId: number,
+  leagueId: string,
   updates: {
     name?: string
     description?: string
@@ -179,26 +179,26 @@ export async function updateLeagueSettings(
   })
 }
 
-export async function getUserPicks(userId: string, leagueId: number): Promise<Pick[]> {
+export async function getUserPicks(userId: string, leagueId: string): Promise<Pick[]> {
   return apiRequest(`/picks?user_id=${userId}&league_id=${leagueId}`)
 }
 
 export async function getPicksRemaining(
   userId: string,
-  leagueId: number,
+  leagueId: string,
 ): Promise<{ team: Team; remaining: number }[]> {
   return apiRequest(`/picks/remaining?user_id=${userId}&league_id=${leagueId}`)
 }
 
-export async function getUpcomingGames(week: number, leagueId: number): Promise<Game[]> {
+export async function getUpcomingGames(week: number, leagueId: string): Promise<Game[]> {
   return apiRequest(`/games?week=${week}&league_id=${leagueId}`)
 }
 
-export async function getUpcomingGamesWithPicks(week: number, leagueId: number, userId: string): Promise<Game[]> {
+export async function getUpcomingGamesWithPicks(week: number, leagueId: string, userId: string): Promise<Game[]> {
   return apiRequest(`/games?week=${week}&league_id=${leagueId}&user_id=${userId}`)
 }
 
-export async function makePick(userId: string, gameId: number, teamId: number, leagueId: number, week?: number): Promise<Pick> {
+export async function makePick(userId: string, gameId: number, teamId: number, leagueId: string, week?: number): Promise<Pick> {
   // If week is not provided, we need to find it by looking up the game
   let gameWeek = week
   
@@ -243,13 +243,13 @@ export async function getPlayerProfile(playerId: string, leagueId: string): Prom
   return apiRequest(`/leagues/${leagueId}/players/${playerId}/profile`)
 }
 
-export async function getSeasonSummary(leagueId: number): Promise<SeasonSummary> {
+export async function getSeasonSummary(leagueId: string): Promise<SeasonSummary> {
   return apiRequest(`/leagues/${leagueId}/season-summary`)
 }
 
 // Invitation API functions
 export async function createLeagueInvitation(
-  leagueId: number,
+  leagueId: string,
   maxUses: number | null,
   expiresAt: string | null
 ): Promise<any> {
@@ -259,7 +259,7 @@ export async function createLeagueInvitation(
   })
 }
 
-export async function getLeagueInvitations(leagueId: number): Promise<any[]> {
+export async function getLeagueInvitations(leagueId: string): Promise<any[]> {
   return apiRequest(`/leagues/${leagueId}/invitations`)
 }
 

@@ -3,15 +3,39 @@
 **Ticket ID**: SUR-006
 **Title**: Standardize League ID and Member ID Types from Number to String
 **Type**: Technical Debt
-**Priority**: Low (downgraded from High — see Status)
+**Priority**: Low (downgraded from High — see Status; closed at Low)
 **Estimated Story Points**: 2 (downgraded from 8 — see Status)
-**Status**: Partially resolved — re-triaged 2026-08-09 against the current
-Python/FastAPI backend + statically-exported Next.js frontend stack (post
-CR-105/CR-106). **The backend half of this ticket is fully done**, and was fixed
-*before this re-triage* as a deliberate, documented side effect of the CR-105
-Python port. **The frontend half is still open**, but is a much smaller, purely
-cosmetic/type-annotation problem than originally scoped — no runtime bug is
-currently reproducible from it. Evidence for both halves below.
+**Status**: Done — re-triaged 2026-08-09, frontend fix completed and re-verified
+same day. The backend half was already fully done (fixed as a deliberate,
+documented side effect of the CR-105 Python port). The frontend half — the
+`types/league.ts` + `lib/api-client.ts` + coercion cleanup described in AC1-AC3
+below — has now landed. Verification performed against the actual working tree:
+
+- `types/league.ts:2,13` — `League.id` and `League.createdBy` are `string`. ✅
+- `lib/api-client.ts` — every league/member-ID-taking function (all 16, including
+  `getSeasonSummary` and `getLeagueInvitations`/`createLeagueInvitation`, which a
+  first implementation pass had missed) is typed `string`; a full-file read
+  confirms zero remaining bare `number` or `number | string` unions on these
+  params. ✅
+- Coercions removed: `hooks/use-league.tsx:45,81` (`.toString()` calls gone),
+  `app/leagues/page.tsx:69` (`getUserMembershipStatus` now takes `leagueId:
+  string`), `app/player/page.tsx:41` (`getPlayerProfile` called with
+  `currentLeague.id` directly, no `String(...)` wrap). Bonus (optional per AC3,
+  done anyway, correctly): the harmless `LeagueMembership.id.toString()` no-ops
+  in `app/admin/page.tsx:170,447` and `app/profile/page.tsx:113` were also
+  cleaned up. ✅
+- Repo-wide grep for `leagueId: number`, `memberId: number`, and any remaining
+  `.toString()`/`String(...)` wrapping `league.id`/`member.id` across
+  `app/`, `hooks/`, `lib/api-client.ts` — zero hits. ✅
+- `git status` confirms `api/app/*`, `lib/db.ts`, `lib/auth-utils.ts`, and
+  `app/api/*` were untouched — scope stayed frontend-only as required. ✅
+- `npx tsc --noEmit` shows no new errors traceable to this change (the two
+  pre-existing errors it surfaces — a `LeagueMembership`/`MemberWithUserDetails`
+  mismatch in `app/admin/page.tsx` and a `Pick.result` union gap in
+  `app/profile/page.tsx:368` tied to SUR-008's `"dnp"` work — are unrelated to
+  league/member ID typing and predate this ticket). ✅
+
+All Definition of Done items below are satisfied. Moved to `tickets/done/`.
 
 ## Re-triage Summary (2026-08-09)
 
@@ -248,17 +272,20 @@ None. Pure type-annotation change; no new packages.
 
 ## Definition of Done
 
-- [ ] `types/league.ts`: `League.id` and `League.createdBy` changed to `string`
-- [ ] `lib/api-client.ts`: all league/member-ID-taking function signatures use
+- [x] `types/league.ts`: `League.id` and `League.createdBy` changed to `string`
+- [x] `lib/api-client.ts`: all league/member-ID-taking function signatures use
   `string` (no bare `number`, no `number | string` unions)
-- [ ] Now-unnecessary `.toString()`/`String()` coercions removed from
+- [x] Now-unnecessary `.toString()`/`String()` coercions removed from
   `hooks/use-league.tsx`, `app/leagues/page.tsx`, `app/player/page.tsx`
 - [ ] Manual smoke test: login → league selection → profile → make-picks →
   scoreboard → admin member management (paid/admin toggle, remove member) →
-  results all work with no console errors
-- [ ] No changes made to `api/app/*` (already correct — verify no drift was
+  results all work with no console errors — **not performed as part of this
+  re-verification** (static code/type-level check only); recommend a human
+  click through this once before/alongside the next deploy, though risk is very
+  low per the Risk Assessment below
+- [x] No changes made to `api/app/*` (already correct — verified no drift was
   accidentally introduced)
-- [ ] No changes made to dead `lib/db.ts` / `lib/auth-utils.ts` / `app/api/*`
+- [x] No changes made to dead `lib/db.ts` / `lib/auth-utils.ts` / `app/api/*`
   (the last of which no longer exists)
 
 ## Risk Assessment

@@ -42,7 +42,7 @@ export function LeagueProvider({ children }: { children: React.ReactNode }) {
         // Check if there's a stored league selection
         const storedLeagueId = localStorage.getItem("selectedLeagueId")
         if (storedLeagueId) {
-          const storedMembership = leagues.find((m) => m.league.id.toString() === storedLeagueId)
+          const storedMembership = leagues.find((m) => m.league.id === storedLeagueId)
           if (storedMembership && storedMembership.status === "active") {
             setCurrentLeague(storedMembership.league)
             setCurrentMembership(storedMembership)
@@ -78,7 +78,7 @@ export function LeagueProvider({ children }: { children: React.ReactNode }) {
     }
     setCurrentLeague(league)
     setCurrentMembership(membership)
-    localStorage.setItem("selectedLeagueId", league.id.toString())
+    localStorage.setItem("selectedLeagueId", league.id)
     // Use router.push instead of redirect to avoid SSR issues
     router.push("/profile")
   }

@@ -1,5 +1,5 @@
 export type League = {
-  id: number
+  id: string
   name: string
   description: string
   sportsLeague: string // e.g., "EPL", "NFL", "NBA"
@@ -10,7 +10,7 @@ export type League = {
   isPublic: boolean
   requiresApproval: boolean
   hideScoreboard: boolean
-  createdBy: number
+  createdBy: string
   createdAt: string
   current_game_week: number | null
   current_pick_week: number | null

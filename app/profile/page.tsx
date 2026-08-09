@@ -110,7 +110,7 @@ function ProfileContent() {
     
     setSavingTeamName(true)
     try {
-      await updateMemberStatus(currentLeague.id, currentMembership.id.toString(), { 
+      await updateMemberStatus(currentLeague.id, currentMembership.id, {
         teamName: trimmedTeamName 
       })
       

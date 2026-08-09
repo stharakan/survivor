@@ -167,7 +167,7 @@ function AdminPortalContent() {
   const handleTogglePayment = async (member: MemberWithUserDetails) => {
     if (!currentLeague) return
     
-    const memberId = member.id.toString()
+    const memberId = member.id
     setUpdatingMembers(prev => new Set(prev).add(memberId))
     
     try {
@@ -444,7 +444,7 @@ function AdminPortalContent() {
                           <Switch
                             checked={member.isPaid}
                             onCheckedChange={() => handleTogglePayment(member)}
-                            disabled={updatingMembers.has(member.id.toString())}
+                            disabled={updatingMembers.has(member.id)}
                           />
                         </div>
                         {member.isAdmin && (

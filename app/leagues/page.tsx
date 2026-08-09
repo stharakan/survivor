@@ -66,7 +66,7 @@ export default function LeagueSelectionPage() {
     return null
   }
 
-  const getUserMembershipStatus = (leagueId: number) => {
+  const getUserMembershipStatus = (leagueId: string) => {
     return userLeagues.find((membership) => membership.league.id === leagueId)
   }
 
