@@ -7,7 +7,8 @@
 **Story Points**: 8 (rough; AC4 and AC5 were the unknowns going in -- both are done now)
 **Status**: In Progress -- 7/8 ACs done (AC1, AC2, AC3, AC4, AC5, AC6, AC7).
 `npm run build` now succeeds (`out/` produced cleanly). AC8 (browser-based
-end-to-end verification) is the only thing left.
+end-to-end verification) is underway and found a real go-live blocker --
+see **CR-107** (spun out, not a sub-item here).
 **Parent**: CR-105 (Python backend port) — this is the frontend-cutover phase CR-105
 Phase 2 explicitly left undone. Also resolves the "Deployment packaging idea" flagged
 as park-and-explore in `COLLABORATION_READINESS_EPIC.md`.
@@ -183,13 +184,44 @@ was meant to close. Fixed here, in Python, not TS -- `create_pick` now counts pr
 uses of the team (excluding the week being replaced) and raises before the upsert if
 count >= 2. See the `CR-106 AC7` docstring note in `api/app/db/picks.py`.
 
-**AC8 — Real browser-based end-to-end verification, not curl** ⬜ Not started
+**AC8 — Real browser-based end-to-end verification, not curl** 🟡 In progress, blocked
 Everything on the Python side has only been verified via `curl` so far (per the
 CR-105 Phase 2 report). Before this goes live: full browser walkthrough of
 login → cookie persists across reload → protected route redirect works →
 logout clears cookie → make a pick → admin toggles paid/unpaid. AC2/AC3 are now
 landed, so there's a clean static export (`out/`) to browser-test against a real
-backend -- this is the only remaining AC.
+backend.
+
+Progress so far, against a locally-running `uvicorn` + the sanitized
+`survivor-league-dev` Atlas clone:
+- **Login** verified working (after fixing a blocker below).
+- **Admin members tab / scoreboard**: found broken -- see **CR-107**
+  (`league_memberships.status: "removed"` isn't in the Python `Literal` enum, so
+  any league with a removed member 400s on `/members` and `/scoreboard`; the real
+  "Tharakan Bros Survivor League" already has one). AC8 can't finish the
+  admin-toggle-paid/unpaid step or confirm the scoreboard renders until CR-107
+  lands. **This is exactly the kind of bug real-browser testing catches that curl
+  smoke tests wouldn't have surfaced quickly** -- validates AC8 being its own AC
+  rather than assumed-covered by CR-105's curl verification.
+- **Cookie persists across reload / logout clears cookie / protected-route
+  redirect**: not yet walked end-to-end (blocked behind getting the dev login
+  working, now resolved; re-attempt once CR-107 lands so the admin step can be
+  checked in the same pass).
+- **Make a pick**: not yet attempted -- the seeded dev-clone game dates (EPL
+  2025/2026 season, e.g. weeks 27/28 dated Feb 2026) are already in the past
+  relative to the environment's current clock, so every week showed locked/
+  grayed-out on `/make-picks` when manually checked. Needs either a freshly
+  dated test game inserted into the dev-clone, or to just verify this step
+  against real current-week data once it exists live.
+- **Fixed along the way, not a CR-107 blocker**: `scripts/clone-prod-to-dev.ts`
+  generated dev-clone login emails as `user{N}@dev.local`; Pydantic's `EmailStr`
+  (`api/app/models/requests.py`) rejects `.local` as an IANA special-use TLD,
+  where the original Zod validator (`lib/api-types.ts`) didn't -- so no dev-clone
+  account could log in against the Python backend at all. Fixed by renaming the
+  script's generated domain (and the then-live 62 accounts in
+  `survivor-league-dev`) to `user{N}@dev.internal` instead of loosening the
+  Python validator, since the stricter behavior is arguably correct for real
+  input and no real prod email would ever hit it.
 
 ## Cost Considerations
 
@@ -208,5 +240,8 @@ paid services. Consistent with the epic's cost constraint.
 ## Timeline
 
 Blocks go-live and season start — needs to land before both. AC2/AC3 have landed
-and `main`'s build is green again. AC8 (browser-based verification) is the only
-remaining critical-path item before cutover.
+and `main`'s build is green again. AC8 (browser-based verification) is the
+remaining critical-path item before cutover, and it's currently blocked on
+**CR-107** (`league_memberships.status` enum gap breaks the real production
+league's scoreboard/members list right now). CR-107 needs to land before AC8 can
+finish, and before AC8 can finish, before cutover goes live.
