@@ -57,6 +57,14 @@
       "expectStatus": "in_progress",
       "expectCanPick": false,
       "expectCanChange": false
+    },
+    {
+      "name": "postponed by stored status, even with a startTime that hasn't started yet",
+      "_comment": "SUR-008: postponed short-circuits computeGameStatus the same way completed does. expectCanChange is true here because canChangeExistingPick deliberately does NOT consult status (see its own docstring/comment) -- it only compares startTime to now, and this startTime is still in the future, so it falls out of the time-only rule, not from any postponed-specific handling.",
+      "game": { "startTime": "2026-01-15T13:00:00.000Z", "status": "postponed" },
+      "expectStatus": "postponed",
+      "expectCanPick": false,
+      "expectCanChange": true
     }
   ],
   "gameweekStartedCases": [

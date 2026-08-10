@@ -34,7 +34,14 @@ export function computeGameStatus(game: {
   if (game.status === "completed") {
     return "completed"
   }
-  
+
+  // SUR-008: a postponed game's stored status always wins, same as "completed"
+  // above -- its startTime is stale (either the original, now-void kickoff, or
+  // not yet known) and must not be used to compute a time-based status.
+  if (game.status === "postponed") {
+    return "postponed"
+  }
+
   // Use startTime if available, fallback to date for backward compatibility
   const gameStartTime = game.startTime || game.date
   
@@ -87,6 +94,12 @@ export function getGameStatusDisplay(status: GameStatus): GameStatusDisplay {
         className: "bg-gray-600 text-white",
         icon: "X"
       }
+    case "postponed":
+      return {
+        label: "POSTPONED",
+        className: "bg-amber-500 text-black",
+        icon: "AlertCircle"
+      }
   }
 }
 
@@ -95,7 +108,7 @@ export function getGameStatusDisplay(status: GameStatus): GameStatusDisplay {
  */
 export function isGameDisabled(game: { startTime?: string; date?: string; status?: GameStatus; manualStatusOverride?: GameStatus }): boolean {
   const status = computeGameStatus(game)
-  return status === "in_progress" || status === "completed"
+  return status === "in_progress" || status === "completed" || status === "postponed"
 }
 
 /**
@@ -107,9 +120,11 @@ export function getGameCardClasses(
 ): string {
   const baseClasses = "border-2 border-black shadow-pixel"
   const status = computeGameStatus(game)
-  
+
   if (status === "not_started") {
     return `${baseClasses} ${isSelected ? "bg-retro-orange text-white" : "hover:bg-accent"}`
+  } else if (status === "postponed") {
+    return `border-2 border-amber-500 shadow-pixel opacity-70 cursor-not-allowed bg-amber-50 dark:bg-amber-900/20`
   } else {
     return `${baseClasses} opacity-60 cursor-not-allowed bg-gray-100 dark:bg-gray-800`
   }

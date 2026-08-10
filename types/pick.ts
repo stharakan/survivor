@@ -6,6 +6,6 @@ export type Pick = {
   user: string
   game: Game
   team: Team
-  result: "win" | "loss" | null
+  result: "win" | "loss" | "draw" | "dnp" | null
   week: number
 }

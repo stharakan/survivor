@@ -523,35 +523,21 @@ TS monolith and get the typed-contract benefit via TS-only means instead.
 **Type**: Tech Debt / Correctness
 **Priority**: Medium
 **Story Points**: 5
-**Timeline**: 2-3 days
-**Status**: Unstarted — and worse than when written. The duplication was not
-consolidated; it was *copied* into the Python port during the CR-105 migration.
-`api/app/db/scoring.py::calculate_scores_and_strikes` and `api/app/db/results.py`
-(season summary) each independently encode `strikes >= 2` elimination logic,
-mirroring the original `lib/scoring.ts` vs `lib/db.ts::getSeasonSummary` split,
-which is also still present unchanged. Re-verified 2026-08-09.
-**Blocked by / coordinated with**: CR-101 (target language depends on the decision)
+**Status**: Unstarted — pulled into its own file 2026-08-10:
+`tickets/CR-103-consolidate-duplicated-scoring-logic.md`. CR-101 (the language
+decision this was blocked on) is Done, so the standalone ticket is unblocked and
+scoped Python-only per the re-eval note below. It also now documents fresh
+evidence of the drift risk from SUR-008 (2026-08-09/10), which added a `"dnp"`
+result value to both duplicated copies by hand. See that file for the current
+Problem/ACs/Files-to-Modify — this entry is a pointer, not the source of truth.
 
-**Description**: Survivor scoring/elimination is implemented twice — `lib/scoring.ts`
-(`calculateScoresAndStrikes`) and `db.ts::getSeasonSummary` — as separate week-by-week
-loops encoding the same rules (win=3, draw=1, loss/missing=strike; elimination at
-`strikes >= 2`). They can silently drift. Extract one shared pure function, name the
-magic numbers as constants, and test it.
-
-**Acceptance Criteria**:
-- AC1: Single shared function for per-week points/strikes/elimination
-- AC2: `win=3 / draw=1`, `strikes >= 2` expressed as named constants
-- AC3: Unit tests for the shared function
-- AC4: Both call sites use it
-- AC5: Opportunistically group the extracted scoring logic under `lib/scoring/`
-  (TS) or a single scoring module in the Python backend — no standalone folder reorg.
-
-**Cost Considerations**: None.
-**Re-eval note:** Shape now depends on CR-101. If scoring moves to a Python backend,
-consolidate it **directly in Python** — consolidating in TS first and then porting
-means doing the work twice. Still worth doing (real drift risk); just do it once, in
-the target language, after the CR-101 call. The single-home requirement also protects
-against DEC-1's "split scoring across a language boundary" cost.
+**Re-eval note (superseded by the standalone file, kept here for history):**
+Shape depended on CR-101. Now that CR-101 landed on a Python backend, consolidate
+**directly in Python** — consolidating in TS first (the original plan, written
+when `lib/scoring.ts`/`db.ts::getSeasonSummary` were the live duplicate) would
+have meant doing the work twice, and that TS pair is dead code post-CR-106 anyway.
+The single-home requirement also protects against DEC-1's "split scoring across a
+language boundary" cost.
 
 ---
 

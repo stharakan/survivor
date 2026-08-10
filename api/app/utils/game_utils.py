@@ -64,6 +64,12 @@ def compute_game_status(game: Mapping, *, now: Optional[datetime] = None) -> str
     if game.get("status") == "completed":
         return "completed"
 
+    # SUR-008: a postponed game's stored status always wins, same as "completed"
+    # above -- its startTime is stale (either the original, now-void kickoff, or
+    # not yet known) and must not be used to compute a time-based status.
+    if game.get("status") == "postponed":
+        return "postponed"
+
     game_start_time = game.get("startTime") or game.get("date")
     if not game_start_time:
         return game.get("status") or "not_started"

@@ -19,7 +19,7 @@ interface ResultsData {
     picks: Array<{
       week: number
       teamName: string
-      result: "win" | "loss" | "draw" | null
+      result: "win" | "loss" | "draw" | "dnp" | null
     }>
   }>
   completedWeeks: number[]
@@ -96,7 +96,7 @@ function ResultsContent() {
     fetchData()
   }, [user, currentLeague])
 
-  const getPickCellClassName = (result: "win" | "loss" | "draw" | null) => {
+  const getPickCellClassName = (result: "win" | "loss" | "draw" | "dnp" | null) => {
     switch (result) {
       case "win":
         return "bg-green-500 text-white"
@@ -104,6 +104,8 @@ function ResultsContent() {
         return "bg-red-500 text-white"
       case "draw":
         return "bg-yellow-500 text-black"
+      case "dnp":
+        return "bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200"
       default:
         return "bg-gray-100 dark:bg-gray-800 text-muted-foreground"
     }
@@ -162,9 +164,9 @@ function ResultsContent() {
                         className={`flex-shrink-0 w-32 p-3 text-center text-xs border-r-2 border-black flex items-center justify-center ${getPickCellClassName(
                           pick.result
                         )}`}
-                        title={`Week ${pick.week}: ${pick.teamName} (${pick.result || 'No result'})`}
+                        title={`Week ${pick.week}: ${pick.teamName} (${pick.result === "dnp" ? "DNP - game postponed" : pick.result || 'No result'})`}
                       >
-                        <div className="font-medium">{pick.teamName}</div>
+                        <div className="font-medium">{pick.result === "dnp" ? "DNP" : pick.teamName}</div>
                       </div>
                     ))}
                   </div>
@@ -186,6 +188,10 @@ function ResultsContent() {
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-red-500 border border-black"></div>
               <span className="text-sm">Loss</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-amber-100 dark:bg-amber-900/40 border border-black"></div>
+              <span className="text-sm">DNP (Postponed)</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="w-4 h-4 bg-gray-100 dark:bg-gray-800 border border-black"></div>

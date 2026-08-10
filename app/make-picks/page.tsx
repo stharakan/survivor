@@ -459,6 +459,8 @@ function MakePicksContent() {
                           <div className={`px-2 py-1 flex items-center gap-1 border-2 border-black ${statusDisplay.className}`}>
                             {statusDisplay.icon === "X" ? (
                               <X className="h-4 w-4" />
+                            ) : statusDisplay.icon === "AlertCircle" ? (
+                              <AlertCircle className="h-4 w-4" />
                             ) : (
                               <Clock className="h-4 w-4" />
                             )}
@@ -471,6 +473,11 @@ function MakePicksContent() {
                           <div className="text-sm font-bold">
                             Final Score: {game.homeTeam.name} {game.homeScore} - {game.awayScore} {game.awayTeam.name}
                           </div>
+                        </div>
+                      )}
+                      {gameStatus === "postponed" && game.isPostponed && game.originalWeek && (
+                        <div className="mt-2 text-center text-xs text-muted-foreground">
+                          Originally week {game.originalWeek} — will be rescheduled
                         </div>
                       )}
                       <CardDescription>{format(new Date(game.date), "EEEE, MMMM d, yyyy 'at' h:mm a")}</CardDescription>
