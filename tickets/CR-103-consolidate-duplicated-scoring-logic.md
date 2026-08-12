@@ -4,7 +4,9 @@
 **Title**: Consolidate Duplicated Scoring / Elimination Logic
 **Type**: Tech Debt / Correctness
 **Priority**: Medium
-**Story Points**: 5
+**Story Points**: 5 → 6 (bumped 2026-08-10: scope now includes a genuine
+`isLeagueEnded` correctness fix, not just extraction — see "League-ended logic"
+below)
 **Timeline**: 2-3 days
 **Epic**: `tickets/COLLABORATION_READINESS_EPIC.md`, Phase 2 — Architecture Spike
 (pulled into its own file 2026-08-10; previously an inline subsection only, no
@@ -17,6 +19,10 @@ own re-eval note below, should be consolidated **directly in Python** rather tha
 in TypeScript. Re-verified against the current codebase 2026-08-10 — the
 duplication is still present, and SUR-008 (landed 2026-08-09/10) added a third
 independently-encoded rule to both copies. See "Fresh evidence" below.
+**Widened 2026-08-10**: scope now also covers `get_season_summary`'s
+`is_league_ended` computation, which turns out to be a third independent
+encoding of the elimination threshold *and* to compute the wrong thing — see
+"League-ended logic" below.
 
 ## Problem
 
@@ -106,6 +112,63 @@ fold `"dnp"` into the shared function as a fourth first-class case**, not just t
 original three (`win`/`draw`/`loss`) the epic text was written against before
 SUR-008 existed.
 
+## League-ended logic is a third encoding — and it's wrong (found 2026-08-10)
+
+`api/app/db/results.py:135`, inside `get_season_summary`, computes a third,
+independent copy of the elimination threshold:
+
+```python
+is_league_ended = len(active_members) > 0 and all(m.strikes >= 2 for m in active_members)
+```
+
+This has two problems:
+
+1. **It's a third independently-encoded `>= 2` threshold**, alongside the
+   per-week loop's own `strikes >= 2` check three lines below it (line 188) and
+   `scoring.py`'s implicit threshold. Same drift risk AC2 is meant to close —
+   a threshold change would need to touch a third site nothing points to.
+2. **It computes the wrong condition.** A survivor league ends when at most one
+   player is left standing (last-man-standing wins), not when *every* player has
+   2+ strikes. `all(m.strikes >= 2 for m in active_members)` requires the whole
+   field to be eliminated, so in the normal case — one player survives with 0 or
+   1 strikes while everyone else has 2+ — the league never reports itself as
+   ended. That's user-visible: `isLeagueEnded` gates "Final Standings" vs.
+   "Current Standings" and "Prize Winners" vs. "Current Prize Leaders" in
+   `app/results/page.tsx`, disables picking in `app/make-picks/page.tsx`, and
+   switches `app/profile/page.tsx` to "Final Points"/"Final Strikes"/"Final
+   Wins" labels — so a completed season with a winner keeps reading as "in
+   progress" indefinitely.
+
+   (The identical bug exists in the out-of-scope TS dead code,
+   `lib/db.ts:1728-1729` — confirms this was carried over unexamined during the
+   CR-105 port, same pattern as the rest of this ticket. Not fixed there since
+   that file is dead per the ticket's "Out of scope" section.)
+
+The corrected rule: the league has ended once the count of active members with
+`strikes < ELIMINATION_STRIKE_THRESHOLD` is **≤ 1**. This is a strict superset
+of the old condition (0 survivors remaining ⊆ ≤1 survivors remaining), so it
+still reports "ended" for the all-eliminated case; it just also catches the
+normal one-survivor-wins case the old check missed.
+
+**Edge case needing an explicit decision, not just an implicit default**:
+single-active-member leagues. With only one active member, "≤ 1 survivor
+remains" is true from week 1 onward regardless of that member's strike count,
+which would mark the league "ended" before any elimination has actually
+happened. Recommended default: require at least 2 active members for the
+"≤ 1 survivor" branch to fire; a single-member league falls back to the old
+"all (i.e., that one member) have `strikes >= threshold`" condition. Implementer
+should confirm this matches product intent before or during implementation
+rather than silently picking a behavior — flag it in the PR description either
+way.
+
+This computation should move into the same shared module as the rest of this
+ticket (`api/app/db/scoring_rules.py`), as a small pure function — e.g.
+`is_league_ended(active_member_strikes: list[int]) -> bool` — taking just the
+strikes already on each `LeagueMembershipWithUserDetails`, not full pick
+history (unlike the per-week function, this doesn't need picks at all, just the
+already-persisted `strikes` field). `results.py:135` calls it instead of the
+inline `all(...)`.
+
 ## Acceptance Criteria
 
 (Adapted from the epic's original 5 ACs: narrowed to Python-only per CR-101's
@@ -133,6 +196,17 @@ backend, consolidate it directly in Python" — and widened to cover `"dnp"`.)
   case for `get_season_summary` if one doesn't already exist.
 - **AC5**: The old inline duplicated blocks are removed entirely from both files
   (not left dead or commented out).
+- **AC6**: A shared `is_league_ended(active_member_strikes: list[int]) -> bool`
+  (or equivalent) function in `scoring_rules.py`, using the same
+  `ELIMINATION_STRIKE_THRESHOLD` constant from AC2, implementing the *corrected*
+  rule — league ends when ≤1 active member remains with `strikes < threshold`
+  (see "League-ended logic" above for the single-member-league edge case to
+  confirm). This is a **behavior change**, not pure extraction like AC1/AC4-AC5
+  — call it out explicitly in the PR description, since it will flip
+  `isLeagueEnded` to `true` for any already-completed season currently sitting
+  at "one survivor, league not marked ended."
+- **AC7**: `results.py::get_season_summary` calls the shared
+  `is_league_ended` function instead of its inline `all(...)` computation.
 
 ## Out of scope
 
@@ -152,23 +226,30 @@ backend, consolidate it directly in Python" — and widened to cover `"dnp"`.)
 | File | Change |
 |------|--------|
 | `api/app/db/scoring.py` | `calculate_scores_and_strikes`: replace the inline per-pick loop (lines 126-139 today) with a call to the shared function |
-| `api/app/db/results.py` | `get_season_summary`: replace the inline per-week loop (lines 165-186 today) with a call to the shared function |
-| New module, e.g. `api/app/db/scoring_rules.py` | The extracted shared function + named point/strike constants |
-| New test file, e.g. `api/tests/test_scoring_rules.py` | Pure unit tests for the shared function, no DB needed |
+| `api/app/db/results.py` | `get_season_summary`: replace the inline per-week loop (lines 165-186 today) **and** the inline `is_league_ended = all(...)` (line 135 today) with calls to the shared functions |
+| New module, e.g. `api/app/db/scoring_rules.py` | The extracted shared per-week function, the new `is_league_ended` function, + named point/strike/elimination constants |
+| New test file, e.g. `api/tests/test_scoring_rules.py` | Pure unit tests for the shared functions, no DB needed — including `is_league_ended`'s ≤1-survivor boundary and the single-member-league edge case |
 | `api/tests/test_game_updater_live_mongo.py` | Extend/confirm `test_calculate_scores_and_strikes_with_dnp_picks` still passes unchanged after the refactor (regression check, not a new test) |
 
 ## Testing
 
-1. Unit tests (new, no DB) for the shared function: `win`/`draw`/`loss`/`dnp`/
-   missing-pick, and the exactly-2-strikes elimination boundary.
-2. Regression: existing live-Mongo tests for both `calculate_scores_and_strikes`
-   and `get_season_summary` (add one for the latter if none exists yet) must still
-   pass unchanged after both call sites are switched to the shared function —
-   this refactor must not change observable behavior.
-3. Explicit before/after parity check: run both functions against the same seeded
+1. Unit tests (new, no DB) for the shared per-week function: `win`/`draw`/`loss`/
+   `dnp`/missing-pick, and the exactly-2-strikes elimination boundary.
+2. Unit tests (new, no DB) for `is_league_ended`: 0 survivors, exactly 1 survivor,
+   2+ survivors, and the single-active-member edge case.
+3. Regression: existing live-Mongo tests for `calculate_scores_and_strikes` must
+   still pass unchanged after its call site is switched to the shared function —
+   that computation is pure extraction, not a behavior change.
+4. `get_season_summary` regression is **not** "unchanged" for `isLeagueEnded` —
+   add/update a live-Mongo case asserting the corrected value (league marked
+   ended with exactly one survivor remaining), plus confirm points/strikes/
+   elimination-week output is otherwise unchanged.
+5. Explicit before/after parity check: run both functions against the same seeded
    picks/league state before and after the refactor and diff the outputs, since
    the whole point is "these two must agree" — a manual or scripted check during
-   review, not necessarily a permanent test.
+   review, not necessarily a permanent test. For `is_league_ended` specifically,
+   expect a diff on any fixture with exactly one surviving member — that's the
+   fix, not a regression.
 
 ## Verification
 

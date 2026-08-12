@@ -26,7 +26,10 @@ from app.utils.game_utils import has_gameweek_started
 # SUR-008: a game whose new date drifts more than this many days from the
 # median date of the other games in the same week+sportsLeague+season is
 # treated as silently postponed, even if the API still reports SCHEDULED/TIMED.
-_DATE_DRIFT_THRESHOLD = timedelta(days=14)
+# 4 days, not a larger buffer: a week's games normally span at most ~4 days
+# peak-to-peak, so anything drifting further than that is already at the
+# point of overlapping into a neighboring week's normal date range.
+_DATE_DRIFT_THRESHOLD = timedelta(days=4)
 
 logger = logging.getLogger("game_updater")
 
