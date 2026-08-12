@@ -21,6 +21,15 @@ import httpx
 
 from app.db.mongodb import get_database, Collections
 from app.db.scoring import run_scoring_calculation
+from app.utils.game_utils import has_gameweek_started
+
+# SUR-008: a game whose new date drifts more than this many days from the
+# median date of the other games in the same week+sportsLeague+season is
+# treated as silently postponed, even if the API still reports SCHEDULED/TIMED.
+# 4 days, not a larger buffer: a week's games normally span at most ~4 days
+# peak-to-peak, so anything drifting further than that is already at the
+# point of overlapping into a neighboring week's normal date range.
+_DATE_DRIFT_THRESHOLD = timedelta(days=4)
 
 logger = logging.getLogger("game_updater")
 
@@ -86,13 +95,21 @@ async def _find_matching_database_game(api_game: dict, api_season: str) -> dict:
 
 
 def _map_api_status_to_internal(api_status: str) -> str:
-    """Port of lib/game-updater.ts:80-99."""
+    """Port of lib/game-updater.ts:80-99.
+
+    SUR-008 fix: POSTPONED/CANCELLED/SUSPENDED used to fall into the same
+    branch as FINISHED/AWARDED, producing a "completed" game with null scores
+    that could never resolve (see the ticket for the full zombie-state
+    analysis). They now map to a distinct "postponed" status instead.
+    """
     if api_status in ("SCHEDULED", "TIMED"):
         return "not_started"
     if api_status in ("LIVE", "IN_PLAY", "PAUSED", "HALFTIME"):
         return "in_progress"
-    if api_status in ("FINISHED", "AWARDED", "POSTPONED", "CANCELLED", "SUSPENDED"):
+    if api_status in ("FINISHED", "AWARDED"):
         return "completed"
+    if api_status in ("POSTPONED", "CANCELLED", "SUSPENDED"):
+        return "postponed"
     return "not_started"
 
 
@@ -215,9 +232,100 @@ def _find_game_in_bulk_response(db_game: dict, api_games: list[dict]) -> Optiona
     return None
 
 
+def _parse_game_datetime(value) -> datetime:
+    """Accepts either a Mongo-driver `datetime` or an ISO-8601 string (the
+    Football Data API's `utcDate` shape). Assumes UTC for a naive value."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    text = value.replace("Z", "+00:00") if value.endswith("Z") else value
+    parsed = datetime.fromisoformat(text)
+    return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+
+
+def _median_datetime(values: list[datetime]) -> datetime:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return ordered[mid]
+    return ordered[mid - 1] + (ordered[mid] - ordered[mid - 1]) / 2
+
+
+async def _is_date_drifted(db, db_game: dict, new_start_time: str) -> bool:
+    """SUR-008 step 3b: detect a game silently rescheduled far outside its
+    week's normal date range without the API ever reporting POSTPONED --
+    e.g. a fixture list quietly moved 3+ weeks later while still coming back
+    as SCHEDULED/TIMED. Compares against the median date of the other games
+    in the same week+sportsLeague+season; >14 days off is treated as a
+    postponement.
+
+    Excludes already-`"postponed"` siblings from the median: once a game is
+    marked postponed its `startTime` gets rewritten to its (possibly far-future
+    or still-unknown) new date, which would otherwise pollute the "normal date
+    range" baseline used to judge every other game in the same week.
+    """
+    sibling_games = await db[Collections.GAMES].find({
+        "week": db_game["week"],
+        "sportsLeague": db_game.get("sportsLeague"),
+        "season": db_game.get("season"),
+        "status": {"$ne": "postponed"},
+        "_id": {"$ne": db_game["_id"]},
+    }).to_list(length=None)
+
+    sibling_dates = [
+        _parse_game_datetime(raw)
+        for raw in (g.get("startTime") or g.get("date") for g in sibling_games)
+        if raw is not None
+    ]
+    if not sibling_dates:
+        return False
+
+    median_date = _median_datetime(sibling_dates)
+    new_date = _parse_game_datetime(new_start_time)
+    return abs(new_date - median_date) > _DATE_DRIFT_THRESHOLD
+
+
+async def _handle_postponement(db, db_game: dict) -> dict:
+    """SUR-008 step 3c: a game just transitioned TO "postponed". Marks it as
+    such and either deletes or DNP-marks any existing picks for it, per the
+    published rules (app/rules/page.tsx): unpickable before the gameweek
+    starts (so existing picks are voided and users must re-pick), DNP after
+    (so existing picks are preserved but score/strike-neutral).
+
+    Returns `{isPostponed, originalWeek, picksDeleted, picksMarkedDnp}` for
+    the caller to fold into the game document's `$set`."""
+    league = await db[Collections.LEAGUES].find_one({
+        "sportsLeague": db_game.get("sportsLeague"),
+        "season": db_game.get("season"),
+    })
+    gameweek_started = has_gameweek_started(league or {}, db_game["week"])
+
+    picks_deleted = 0
+    picks_marked_dnp = 0
+    if gameweek_started:
+        dnp_result = await db[Collections.PICKS].update_many(
+            {"gameId": db_game["id"]},
+            {"$set": {"result": "dnp"}},
+        )
+        picks_marked_dnp = dnp_result.modified_count
+        _log(f"Game {db_game['id']} postponed after gameweek start: marked {picks_marked_dnp} pick(s) as DNP.")
+    else:
+        delete_result = await db[Collections.PICKS].delete_many({"gameId": db_game["id"]})
+        picks_deleted = delete_result.deleted_count
+        _log(f"Game {db_game['id']} postponed before gameweek start: deleted {picks_deleted} pick(s).")
+
+    return {
+        # Preserve an already-set originalWeek across repeated postponements
+        # (e.g. postponed -> re-scheduled -> postponed again).
+        "originalWeek": db_game.get("originalWeek") or db_game["week"],
+        "picksDeleted": picks_deleted,
+        "picksMarkedDnp": picks_marked_dnp,
+    }
+
+
 async def _update_game_in_database(db_game: dict, api_game: dict) -> dict:
-    """Returns `{statusChangedToCompleted, picksReset}`. Port of
-    lib/game-updater.ts:246-294."""
+    """Returns `{statusChangedToCompleted, statusChangedToPostponed, picksReset,
+    picksDeleted, picksMarkedDnp}`. Port of lib/game-updater.ts:246-294, extended
+    per SUR-008."""
     db = get_database()
 
     new_status = _map_api_status_to_internal(api_game["status"])
@@ -225,7 +333,16 @@ async def _update_game_in_database(db_game: dict, api_game: dict) -> dict:
     new_home_score = ((api_game.get("score") or {}).get("fullTime") or {}).get("home")
     new_away_score = ((api_game.get("score") or {}).get("fullTime") or {}).get("away")
 
+    # SUR-008 step 3b: the API can silently move a fixture's date without ever
+    # reporting POSTPONED. Only relevant when the API-reported status would
+    # otherwise leave the game "not_started" -- an already-postponed game
+    # re-detected here just stays postponed (no duplicate pick handling,
+    # since statusChangedToPostponed below only fires on an actual transition).
+    if new_status == "not_started" and await _is_date_drifted(db, db_game, new_start_time):
+        new_status = "postponed"
+
     status_changed_to_completed = db_game["status"] != "completed" and new_status == "completed"
+    status_changed_to_postponed = db_game["status"] != "postponed" and new_status == "postponed"
 
     scores_changed_on_completed_game = (
         db_game["status"] == "completed"
@@ -246,22 +363,41 @@ async def _update_game_in_database(db_game: dict, api_game: dict) -> dict:
             f"{new_home_score}-{new_away_score}. Reset {picks_reset} pick(s) for re-scoring."
         )
 
-    await db[Collections.GAMES].update_one(
-        {"_id": db_game["_id"]},
-        {"$set": {
-            "status": new_status,
-            "startTime": new_start_time,
-            "date": new_start_time,  # keep date field synchronized with startTime
-            "homeScore": new_home_score,
-            "awayScore": new_away_score,
-            "externalId": str(api_game["id"]),  # store for future individual lookups
-            "lastUpdated": datetime.now(timezone.utc),
-        }},
-    )
+    set_fields: dict[str, Any] = {
+        "status": new_status,
+        "startTime": new_start_time,
+        "date": new_start_time,  # keep date field synchronized with startTime
+        "homeScore": new_home_score,
+        "awayScore": new_away_score,
+        "externalId": str(api_game["id"]),  # store for future individual lookups
+        "lastUpdated": datetime.now(timezone.utc),
+    }
+
+    picks_deleted = 0
+    picks_marked_dnp = 0
+    if status_changed_to_postponed:
+        postponement_outcome = await _handle_postponement(db, db_game)
+        set_fields["isPostponed"] = True
+        set_fields["originalWeek"] = postponement_outcome["originalWeek"]
+        picks_deleted = postponement_outcome["picksDeleted"]
+        picks_marked_dnp = postponement_outcome["picksMarkedDnp"]
+    # SUR-008 step 3d (un-postponement): when a previously-postponed game goes
+    # back to "not_started", `isPostponed`/`originalWeek` are deliberately left
+    # out of `set_fields` above -- $set only touches the keys present, so the
+    # existing values on the document are preserved as-is (it's still a
+    # rescheduled match, and `week` never moved).
+
+    await db[Collections.GAMES].update_one({"_id": db_game["_id"]}, {"$set": set_fields})
 
     _log(f"Updated game {db_game['id']}: {db_game['status']} → {new_status}")
 
-    return {"statusChangedToCompleted": status_changed_to_completed, "picksReset": picks_reset}
+    return {
+        "statusChangedToCompleted": status_changed_to_completed,
+        "statusChangedToPostponed": status_changed_to_postponed,
+        "picksReset": picks_reset,
+        "picksDeleted": picks_deleted,
+        "picksMarkedDnp": picks_marked_dnp,
+    }
 
 
 async def _check_and_trigger_scoring(games_moved_to_completed: list[dict]) -> int:
@@ -307,10 +443,15 @@ async def _calculate_current_pick_week(sports_league: str, season: str) -> Optio
 
 
 async def _calculate_last_completed_week(sports_league: str, season: str) -> Optional[int]:
-    """Port of lib/game-updater.ts:374-405."""
+    """Port of lib/game-updater.ts:374-405.
+
+    SUR-008: excludes "postponed" games from the match entirely, so a
+    postponed game no longer prevents its week from ever being counted as
+    fully completed (previously it read as "completed" with null scores,
+    which is what made it a zombie -- see the ticket)."""
     db = get_database()
     result = await db[Collections.GAMES].aggregate([
-        {"$match": {"sportsLeague": sports_league, "season": season}},
+        {"$match": {"sportsLeague": sports_league, "season": season, "status": {"$ne": "postponed"}}},
         {"$group": {
             "_id": "$week",
             "completedCount": {"$sum": {"$cond": [{"$eq": ["$status", "completed"]}, 1, 0]}},
@@ -381,6 +522,9 @@ async def update_game_scores() -> dict:
         games_updated = 0
         total_picks_reset = 0
         games_moved_to_completed: list[dict] = []
+        games_moved_to_postponed = 0
+        total_picks_deleted = 0
+        total_picks_marked_dnp = 0
 
         # Process bulk games first with enhanced matching.
         for api_game in bulk_games:
@@ -392,9 +536,13 @@ async def update_game_scores() -> dict:
             update_outcome = await _update_game_in_database(db_game, api_game)
             games_updated += 1
             total_picks_reset += update_outcome["picksReset"]
+            total_picks_deleted += update_outcome["picksDeleted"]
+            total_picks_marked_dnp += update_outcome["picksMarkedDnp"]
 
             if update_outcome["statusChangedToCompleted"]:
                 games_moved_to_completed.append(db_game)
+            if update_outcome["statusChangedToPostponed"]:
+                games_moved_to_postponed += 1
 
         # Process overdue games not found in the bulk response.
         for overdue_game in overdue_games:
@@ -408,9 +556,13 @@ async def update_game_scores() -> dict:
                     update_outcome = await _update_game_in_database(overdue_game, individual_game)
                     games_updated += 1
                     total_picks_reset += update_outcome["picksReset"]
+                    total_picks_deleted += update_outcome["picksDeleted"]
+                    total_picks_marked_dnp += update_outcome["picksMarkedDnp"]
 
                     if update_outcome["statusChangedToCompleted"]:
                         games_moved_to_completed.append(overdue_game)
+                    if update_outcome["statusChangedToPostponed"]:
+                        games_moved_to_postponed += 1
             elif not found_in_bulk:
                 _log(f"Overdue game {overdue_game['id']} has no external ID for individual lookup")
 
@@ -435,6 +587,9 @@ async def update_game_scores() -> dict:
         _log(f"  • {len(games_moved_to_completed)} games moved to completed status")
         _log(f"  • {picks_updated} user picks affected by completed games")
         _log(f"  • {total_picks_reset} pick(s) reset due to score corrections")
+        _log(f"  • {games_moved_to_postponed} games moved to postponed status")
+        _log(f"  • {total_picks_deleted} pick(s) deleted (postponed before gameweek start)")
+        _log(f"  • {total_picks_marked_dnp} pick(s) marked DNP (postponed after gameweek start)")
         _log(f"  • {leagues_updated} leagues updated with week tracking")
         _log(f"  • Total execution time: {execution_time} seconds")
         _log(f"  • Completed at: {end_time.isoformat()}")
@@ -445,6 +600,9 @@ async def update_game_scores() -> dict:
             "individualApiCalls": individual_api_calls,
             "gamesUpdated": games_updated,
             "gamesCompletedWithPicks": picks_updated,
+            "gamesMovedToPostponed": games_moved_to_postponed,
+            "picksDeletedForPostponement": total_picks_deleted,
+            "picksMarkedDnp": total_picks_marked_dnp,
             "leaguesUpdated": leagues_updated,
             "executionTime": execution_time,
             "completedAt": end_time.isoformat(),

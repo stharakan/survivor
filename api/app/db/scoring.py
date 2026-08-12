@@ -63,6 +63,28 @@ async def update_pick_results() -> int:
         except Exception as error:  # noqa: BLE001 - mirrors the TS per-pick try/catch that logs and continues
             _log(f"Error processing pick {pick['_id']}: {error}")
 
+    # SUR-008: DNP backfill. A pick marked "dnp" (its game was postponed after
+    # the gameweek started -- see app/db/game_updater.py) is never revisited by
+    # the `result: None` query above, since its result is already non-null. If
+    # the game has since been replayed and completed, recompute the pick's
+    # real win/draw/loss result the same way a fresh completed-game pick would be.
+    dnp_picks = await db[Collections.PICKS].find({"result": "dnp"}).to_list(length=None)
+    _log(f"Found {len(dnp_picks)} DNP picks to check for backfill")
+
+    for pick in dnp_picks:
+        try:
+            game = await db[Collections.GAMES].find_one({"id": pick["gameId"]})
+            if not game or game.get("status") != "completed":
+                continue  # still postponed (or otherwise unresolved) -- leave the DNP as-is
+
+            result = calculate_pick_result(game, pick["teamId"])
+            if result is not None:
+                await db[Collections.PICKS].update_one({"_id": pick["_id"]}, {"$set": {"result": result}})
+                updated_count += 1
+                _log(f"Backfilled DNP pick {pick['_id']}: {result} (Game {game['id']}, Week {game['week']})")
+        except Exception as error:  # noqa: BLE001 - same per-pick log-and-continue pattern as above
+            _log(f"Error backfilling DNP pick {pick['_id']}: {error}")
+
     _log(f"Completed pick result updates: {updated_count} picks updated")
     return updated_count
 
@@ -108,6 +130,13 @@ async def calculate_scores_and_strikes() -> int:
                     total_points += 1
                 elif pick["result"] == "loss":
                     loss_strikes += 1
+                elif pick["result"] == "dnp":
+                    # SUR-008: a DNP pick (postponed game) is already counted
+                    # toward weeks_with_picks above -- no missing-pick strike --
+                    # but deliberately earns no points and no loss strike either.
+                    # Explicit no-op so "0 points, 0 strikes" reads as a stated
+                    # decision rather than an accident of the if/elif chain.
+                    pass
 
             total_strikes = loss_strikes + missing_pick_strikes
 

@@ -177,6 +177,13 @@ async def get_season_summary(league_id: str) -> SeasonSummary:
                 strikes += 1
                 if first_strike_week is None:
                     first_strike_week = week
+            elif pick["result"] == "dnp":
+                # SUR-008: a DNP pick (postponed game) is a real pick, so it
+                # doesn't hit the `if not pick` missing-pick-strike branch
+                # above, but it's explicitly worth 0 points and 0 strikes --
+                # same "stated decision, not accidental" reasoning as
+                # app/db/scoring.py's calculate_scores_and_strikes.
+                pass
 
             if strikes >= 2 and week_eliminated is None:
                 week_eliminated = week

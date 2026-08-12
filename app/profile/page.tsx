@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { CheckCircle2, XCircle, MinusCircle, UserIcon, Shield, Edit3, Check, X, Trophy, Award } from "lucide-react"
+import { CheckCircle2, XCircle, MinusCircle, AlertTriangle, UserIcon, Shield, Edit3, Check, X, Trophy, Award } from "lucide-react"
 import { format } from "date-fns"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
@@ -369,6 +369,12 @@ function ProfileContent() {
                           <Badge variant="outline" className="flex items-center gap-1 border-2 border-black">
                             <MinusCircle className="h-3 w-3" />
                             Draw
+                          </Badge>
+                        )}
+                        {pick.result === "dnp" && (
+                          <Badge className="flex items-center gap-1 border-2 border-black bg-amber-500 text-black">
+                            <AlertTriangle className="h-3 w-3" />
+                            DNP
                           </Badge>
                         )}
                         {pick.result === null && (

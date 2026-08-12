@@ -4,7 +4,10 @@
 **Title**: Handle Postponed and Rescheduled Games in Week Calculations
 **Type**: Bug Fix / Feature
 **Priority**: High
-**Status**: Confirmed still open as of 2026-08-09. Rewritten to target the current
+**Status**: **Implementation in progress on `feature/SUR-008-postponed-game-handling`,
+uncommitted, believed near-complete as of 2026-08-11 — see "Progress as of
+2026-08-11" below for the concrete checklist a fresh agent needs to close this out.**
+Originally: confirmed still open as of 2026-08-09, rewritten to target the current
 architecture — the app migrated from Next.js API routes to a Python/FastAPI backend
 (`api/app/`, motor/pymongo, Pydantic models) with a statically-exported Next.js
 frontend, per `tickets/done/CR-106-frontend-static-export-cutover.md`. The bug
@@ -14,6 +17,84 @@ and `middleware.ts` in CR-106) has an identical twin in its Python port,
 today** — see Evidence below. This is a rewrite of the implementation plan for
 accuracy against the current codebase; the underlying bug analysis and design from
 the original ticket are still valid.
+
+## Progress as of 2026-08-11 — for a fresh agent picking this up
+
+**All 8 implementation steps below have working code on the current branch**,
+verified by re-reading the actual diff against `main` (not just trusting file
+presence):
+
+- ✅ Step 1 — `"postponed"` status + `isPostponed`/`originalWeek` fields, both
+  `api/app/models/game.py` and `types/game.ts`, threaded through
+  `api/app/db/_shape.py`'s `game_from_doc`.
+- ✅ Step 2 — `"dnp"` added to `Pick.result`, both `api/app/models/pick.py` and
+  `types/pick.ts` (the latter also picked up the pre-existing missing `"draw"`
+  it never had — noted inline in the diff, not a silent scope-add).
+- ✅ Step 3 — `api/app/db/game_updater.py`: status-mapping fix (3a),
+  median-based date-drift detection (3b, `_is_date_drifted`/`_DATE_DRIFT_THRESHOLD`
+  — **threshold corrected 14→4 days on 2026-08-11**, see step 3b's note),
+  postponement pick-handling (3c, `_handle_postponement`: deletes picks
+  pre-gameweek, marks `"dnp"` post-gameweek), and un-postponement preserving
+  `isPostponed`/`originalWeek` (3d).
+- ✅ Step 4 — `_calculate_last_completed_week` excludes `"postponed"` via
+  `$ne` in its `$match`; the other two week-calc functions needed no change,
+  confirmed by re-reading them (not just trusting the ticket's own prediction).
+- ✅ Step 5 — `compute_game_status`/`computeGameStatus` early-return for
+  `"postponed"` in both `api/app/utils/game_utils.py` and `lib/game-utils.ts`;
+  TS-only rendering helpers (`getGameStatusDisplay`, `isGameDisabled`,
+  `getGameCardClasses`, `getTeamSelectionClasses`) all handle it; one new
+  fixture case added to `test-fixtures/game-utils-golden.json`.
+- ✅ Step 6 — `api/app/db/scoring.py`: DNP-backfill query added to
+  `update_pick_results`; explicit documented `"dnp"` no-op branch in
+  `calculate_scores_and_strikes`. **Traced and confirmed correct**: the
+  pick-lock flow in `api/app/routers/picks.py` means a `"dnp"`-holding pick can
+  never reach `can_change_existing_pick`'s time-only check while the gameweek
+  is active — `are_picks_locked` rejects the request first. No live bug here.
+- ✅ Step 7 — confirmed `api/app/routers/picks.py` needed no change, as
+  predicted; `get_game_time_info_by_id` (`api/app/db/games.py`) does return
+  `status`, so `can_pick_from_game` correctly blocks postponed target games.
+- ✅ Step 8 — `app/make-picks/page.tsx`: POSTPONED badge (`AlertCircle` icon),
+  amber styling, `originalWeek` surfaced when set.
+- **Bonus fix beyond the ticket's own file list, but necessary**: `GameUserPick.result`
+  (`api/app/models/game.py`) and `UserWeekPick.result` (`api/app/models/results.py`)
+  both also needed `"dnp"` added — without it, `get_games_by_week_with_picks` /
+  `get_league_results` would raise a `ValidationError` the first time either read
+  a DNP pick back. Also touched `app/profile/page.tsx` and `app/results/page.tsx`
+  for DNP display (amber badge/cell), and `api/app/db/results.py`'s
+  `get_season_summary` for the same "explicit 0/0, not accidental" `"dnp"` branch
+  `calculate_scores_and_strikes` got.
+
+**Tests**: pure-function suites pass as of 2026-08-11 — `cd api && uv run pytest
+tests/test_game_updater_status_mapping.py tests/test_game_utils_parity.py` (50
+passed) and `npx jest game-utils` (43 passed, both `game-utils.test.ts` and
+`game-utils-parity.test.ts`).
+
+**NOT yet verified — this environment has no local MongoDB (`MONGODB_URI` unset,
+no running container)**: `api/tests/test_game_updater_live_mongo.py` (348 lines,
+new file, covers `_calculate_last_completed_week` with a postponed game,
+postponement pick-handling, DNP backfill, `calculate_scores_and_strikes` with DNP,
+date-drift detection) has never actually been run against a real database. **This
+is the main remaining table-stakes item** — spin up
+`docker run -d --rm -p 27117:27017 mongo:7` (per that file's own docstring) and run
+it before considering this ticket done.
+
+**Table stakes remaining to close SUR-008** (everything above this line is done;
+this is the actual remaining checklist):
+1. Run `test_game_updater_live_mongo.py` against a disposable Mongo instance; fix
+   anything it surfaces.
+2. Walk the 8-item "Verification" section at the bottom of this file end-to-end.
+3. Confirm `npm run lint` / relevant Python lint are clean on the changed files.
+4. Commit (currently all uncommitted on this branch) and open the PR.
+
+**Explicitly NOT required to close SUR-008** — deferred by design to
+`tickets/SUR-009-postponed-game-pick-window.md` (see that ticket for why): the
+interim behavior shipped here — a postponed game is unconditionally unpickable
+the instant it's flagged (regardless of whether its pick week is still open), and
+a `"dnp"` pick stays permanently neutral (0 pts/0 strikes) even if its pick week
+closes without the game ever resolving — is a deliberate, accepted stopgap.
+Postponements are rare in the first half of a season, so this gap is low-risk to
+carry for now rather than block this ticket on it. Do not expand SUR-008's scope
+to cover it; that's SUR-009's job.
 
 ## Status verification (2026-08-09) — evidence the bug is still present
 
@@ -262,9 +343,13 @@ a) **Fix `_map_api_status_to_internal` (line 88-96)**: map `POSTPONED` →
    `"postponed"` as well.
 
 b) **Add date-drift detection in `_update_game_in_database` (line 218-264)**: after
-   computing `new_start_time`, check if the game's new date has drifted >14 days from
+   computing `new_start_time`, check if the game's new date has drifted >4 days from
    the median date of other games in the same week+sportsLeague+season. If so, mark
-   as postponed even if the API status is `SCHEDULED`/`TIMED`.
+   as postponed even if the API status is `SCHEDULED`/`TIMED`. (Threshold revised
+   14→4 days on 2026-08-11 — a week's games normally span at most ~4 days
+   peak-to-peak, so 14 was well past the point of overlapping into a neighboring
+   week's normal date range. The median-vs-fixed-radius approach itself is an
+   interim heuristic, not the final design — see `tickets/SUR-009-postponed-game-pick-window.md`.)
 
 c) **Add postponement handling logic**: when a game's status transitions TO
    `"postponed"` (mirror the existing `status_changed_to_completed` boolean pattern
@@ -419,7 +504,7 @@ lines 16-25, renders them starting around line 442)
 | Game postponed **after** gameweek starts | Game marked `postponed`, existing picks set to `result: "dnp"` |
 | DNP pick during scoring | Counts as "having a pick" (no missing-pick strike), awards 0 points and 0 strikes |
 | Postponed game eventually replayed and completed | `"dnp"` picks overwritten with actual result (`win`/`loss`/`draw`), scoring recalculates |
-| API silently moves game date without `POSTPONED` status | Date-drift detection (>14 days from week median) catches it |
+| API silently moves game date without `POSTPONED` status | Date-drift detection (>4 days from week median) catches it |
 
 ## Testing
 
@@ -486,9 +571,9 @@ see that file's docstring for the `docker run mongo:7` invocation):**
    - A mix of `"win"`, `"dnp"`, `"loss"` picks → correct aggregate totals.
 
 7. **Date-drift detection** (if implemented per step 3b):
-   - Game date >14 days from the week's median date, API status still
+   - Game date >4 days from the week's median date, API status still
      `SCHEDULED`/`TIMED` → detected and marked `postponed`.
-   - Game date within 14 days → not flagged.
+   - Game date within 4 days → not flagged.
    - Game already marked `postponed` → no duplicate detection/re-processing.
 
 ### Frontend (Jest) — only for logic that still lives in the frontend

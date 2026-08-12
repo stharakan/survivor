@@ -5,6 +5,10 @@ tied completed game. Fixed here rather than ported as-is, per this ticket's own
 scope item 4 ("diff each hand-written type against its actual runtime/DB shape").
 See app/db/picks.py's create_pick for the matching logic-level fix (the TS
 `createPick` never checked for a tie at all).
+
+SUR-008: added `"dnp"` (Did Not Play) -- written by app/db/game_updater.py when
+a pick's game is postponed after its gameweek has started, and read back by
+app/db/scoring.py's DNP backfill/scoring logic.
 """
 from typing import Literal, Optional
 
@@ -19,5 +23,5 @@ class Pick(BaseModel):
     user: str
     game: Game
     team: Team
-    result: Optional[Literal["win", "draw", "loss"]] = None  # FIX: was missing "draw"
+    result: Optional[Literal["win", "draw", "loss", "dnp"]] = None  # FIX: was missing "draw"; SUR-008 added "dnp"
     week: int

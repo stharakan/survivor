@@ -56,6 +56,8 @@ def game_from_doc(doc: dict, *, user_pick: Optional[GameUserPick] = None) -> Gam
         startTime=to_iso(doc.get("startTime")),
         sportsLeague=doc.get("sportsLeague", ""),
         season=doc.get("season", ""),
+        isPostponed=doc.get("isPostponed"),
+        originalWeek=doc.get("originalWeek"),
         userPick=user_pick,
     )
 

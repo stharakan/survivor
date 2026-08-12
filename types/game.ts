@@ -1,7 +1,7 @@
 import type { Team } from "./team"
 
 // Unified game status that works for both database storage and UI display
-export type GameStatus = "not_started" | "in_progress" | "completed"
+export type GameStatus = "not_started" | "in_progress" | "completed" | "postponed"
 
 export type Game = {
   id: number
@@ -15,11 +15,13 @@ export type Game = {
   startTime?: string // ISO datetime string for precise game timing
   sportsLeague: string // e.g., "EPL", "NFL", "NBA"
   season: string // e.g., "2024/2025", "2025/2026"
+  isPostponed?: boolean
+  originalWeek?: number
   userPick?: {
     id: string
     user: string
     team: Team
-    result: "win" | "loss" | "draw" | null
+    result: "win" | "loss" | "draw" | "dnp" | null
     week: number
   }
 }

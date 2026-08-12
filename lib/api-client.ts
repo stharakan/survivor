@@ -121,7 +121,7 @@ export async function getLeagueResults(leagueId: string): Promise<{
     picks: Array<{
       week: number
       teamName: string
-      result: "win" | "loss" | "draw" | null
+      result: "win" | "loss" | "draw" | "dnp" | null
     }>
   }>
   completedWeeks: number[]
