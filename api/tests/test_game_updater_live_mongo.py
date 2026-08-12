@@ -316,7 +316,7 @@ async def test_date_drift_detection():
         await _insert_game(db, week=10, status="not_started", when=week_median + offset,
                             home_id=home_id, away_id=away_id)
 
-    # Drifted target: API still says SCHEDULED, but the new date is >14 days off.
+    # Drifted target: API still says SCHEDULED, but the new date is >4 days off.
     drifted_game = await _insert_game(db, week=10, status="not_started", when=week_median,
                                        home_id=home_id, away_id=away_id)
     drifted_api_game = {"id": 999010, "status": "SCHEDULED",
@@ -327,7 +327,7 @@ async def test_date_drift_detection():
     drifted_doc = await db["games"].find_one({"id": drifted_game["id"]})
     assert drifted_doc["status"] == "postponed"
 
-    # Not drifted: new date is within 14 days of the sibling median -- not flagged.
+    # Not drifted: new date is within 4 days of the sibling median -- not flagged.
     close_game = await _insert_game(db, week=10, status="not_started", when=week_median,
                                      home_id=home_id, away_id=away_id)
     close_api_game = {"id": 999011, "status": "SCHEDULED",
