@@ -30,11 +30,14 @@ import Image from "next/image"
 import Link from "next/link"
 import { LeagueGuard } from "@/components/league-guard"
 import type { SeasonSummary } from "@/types/season-summary"
-import { Trophy, Award } from "lucide-react"
+import { Trophy, Award, Lock } from "lucide-react"
 
 function MakePicksContent() {
   const { user } = useAuth()
-  const { currentLeague } = useLeague()
+  const { currentLeague, currentMembership } = useLeague()
+  // Explicit `=== false` (not just falsy) so we don't block while the
+  // membership hasn't loaded yet -- undefined/null should not read as unpaid.
+  const isUnpaid = currentMembership?.isPaid === false
   const [games, setGames] = useState<Game[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedTeam, setSelectedTeam] = useState<number | null>(null)
@@ -66,8 +69,8 @@ function MakePicksContent() {
           const userPick = data.find((game) => game.userPick && game.userPick.user === user?.id)
 
           if (userPick) {
-            setUserPickForWeek(userPick.userPick.team.id)
-            setSelectedTeam(userPick.userPick.team.id)
+            setUserPickForWeek(userPick.userPick!.team.id)
+            setSelectedTeam(userPick.userPick!.team.id)
             setSelectedGameId(userPick.id)
           } else {
             setUserPickForWeek(null)
@@ -120,6 +123,11 @@ function MakePicksContent() {
   }, [user, currentLeague])
 
   const handleTeamSelect = (gameId: number, teamId: number) => {
+    if (isUnpaid) {
+      setError("Picks are locked until your league payment is marked paid. Contact your league admin.")
+      return
+    }
+
     // Check if picks are locked due to gameweek starting
     if (picksLocked) {
       setError("Picks are locked because the gameweek has started and you already have a pick")
@@ -155,6 +163,11 @@ function MakePicksContent() {
 
   const handleSubmitPick = async () => {
     if (!user || !currentLeague || !selectedTeam || !selectedGameId) return
+
+    if (isUnpaid) {
+      setError("Picks are locked until your league payment is marked paid. Contact your league admin.")
+      return
+    }
 
     // Check if picks are locked due to gameweek starting
     if (picksLocked) {
@@ -234,7 +247,7 @@ function MakePicksContent() {
       game.userPick.team.id === userPickForWeek
     )
     
-    return gameWithPick?.userPick.team.name || null
+    return gameWithPick?.userPick?.team.name || null
   }
 
   // Check if there are any games that can still be picked from
@@ -285,6 +298,17 @@ function MakePicksContent() {
               <Trophy className="h-4 w-4" />
               View Season Summary & Prize Winners
             </Link>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Unpaid Banner */}
+      {!isLeagueEnded && isUnpaid && (
+        <Alert className="border-4 border-retro-orange bg-orange-50 dark:bg-orange-950">
+          <Lock className="h-5 w-5 text-retro-orange" />
+          <AlertTitle className="font-heading text-retro-orange">Payment Required</AlertTitle>
+          <AlertDescription>
+            Your league payment is marked unpaid, so picks are locked. Contact your league admin to get marked paid.
           </AlertDescription>
         </Alert>
       )}
@@ -374,6 +398,18 @@ function MakePicksContent() {
             <Link href="/results">
               <Button variant="pixel">View Season Summary</Button>
             </Link>
+          </CardContent>
+        </Card>
+      ) : isUnpaid ? (
+        <Card className="border-4 border-black">
+          <CardContent className="text-center py-12">
+            <div className="text-6xl mb-4">
+              <Lock className="h-16 w-16 mx-auto text-retro-orange" />
+            </div>
+            <h3 className="text-xl font-heading mb-2">Picks Locked</h3>
+            <p className="text-muted-foreground mb-4">
+              Your league payment is marked unpaid. Contact your league admin to unlock picks.
+            </p>
           </CardContent>
         </Card>
       ) : (

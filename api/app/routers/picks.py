@@ -10,7 +10,7 @@ to follow (per the Addendum's explicit wording).
 from bson import ObjectId
 from fastapi import APIRouter, Request
 
-from app.core.auth_deps import require_self, verify_auth_token
+from app.core.auth_deps import require_league_paid, require_self, verify_auth_token
 from app.core.responses import ApiError, ok
 from app.db.games import get_all_teams, get_game_time_info_by_id
 from app.db.leagues import get_league_by_id
@@ -51,11 +51,18 @@ async def create_pick_route(body: CreatePickRequest, request: Request) -> dict:
     check -> game-time check -> change-vs-first-pick branching) is otherwise
     an unchanged port of the TS route's own logic, now calling the Python
     game_utils port (app/utils/game_utils.py) instead of lib/game-utils.ts.
-    """
-    auth_user = await verify_auth_token(request)
-    user_id = auth_user.user_id
 
+    DEVIATION (no TS equivalent, not a bug carried forward): the TS original
+    had no membership check on this route at all, paid or otherwise -- an
+    authenticated user could POST a pick into a league they'd never joined.
+    `require_league_paid` closes that gap and additionally blocks members an
+    admin has marked unpaid (`isPaid` on `LeagueMembership`) from submitting
+    picks.
+    """
     _require_valid_league_id(body.leagueId)
+
+    auth_user = await require_league_paid(request, body.leagueId)
+    user_id = auth_user.user_id
 
     league = await get_league_by_id(body.leagueId)
     if not league:

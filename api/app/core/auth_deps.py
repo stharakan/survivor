@@ -169,18 +169,43 @@ async def authorize_request(
     return auth_context
 
 
-async def require_league_membership(request: Request, league_id: str) -> AuthUser:
-    """Port of lib/auth-utils.ts:238-259 `verifyLeagueMembership` -- used by
-    every league-scoped GET route (members, results, scoreboard,
-    season-summary, the league detail route itself)."""
-    auth_user = await verify_auth_token(request)
-    auth_context = await get_authorization_context(auth_user.user_id, league_id)
+async def _require_active_membership(user_id: str, league_id: str) -> AuthorizationContext:
+    """Shared active-membership check factored out of `require_league_membership`
+    so `require_league_paid` below can layer the isPaid gate on top without
+    duplicating the membership/status logic."""
+    auth_context = await get_authorization_context(user_id, league_id)
 
     if not auth_context.membership:
         raise ApiError("You are not a member of this league", 403)
 
     if auth_context.membership.status and auth_context.membership.status != "active":
         raise ApiError("Your membership in this league is not active", 403)
+
+    return auth_context
+
+
+async def require_league_membership(request: Request, league_id: str) -> AuthUser:
+    """Port of lib/auth-utils.ts:238-259 `verifyLeagueMembership` -- used by
+    every league-scoped GET route (members, results, scoreboard,
+    season-summary, the league detail route itself)."""
+    auth_user = await verify_auth_token(request)
+    await _require_active_membership(auth_user.user_id, league_id)
+    return auth_user
+
+
+async def require_league_paid(request: Request, league_id: str) -> AuthUser:
+    """No TS equivalent -- new gate added so an admin marking a member unpaid
+    (`isPaid` on `LeagueMembership`, toggled via `PATCH
+    .../members/{memberId}`) actually blocks that member from submitting
+    picks, not just from showing a PAID/UNPAID badge in the UI. Layers on top
+    of `_require_active_membership` rather than replacing
+    `require_league_membership`, since payment status should only gate picks
+    -- results/scoreboard/members reads stay open to unpaid members."""
+    auth_user = await verify_auth_token(request)
+    auth_context = await _require_active_membership(auth_user.user_id, league_id)
+
+    if not auth_context.membership.isPaid:
+        raise ApiError("Your league payment is marked unpaid -- picks are locked until an admin marks you paid", 403)
 
     return auth_user
 
