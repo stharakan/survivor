@@ -39,8 +39,9 @@ loader is wired into `app/main.py`, source it yourself):
                                 # /api/admin/update-game-scores
     NEXTAUTH_URL=...           # used to build password-reset magic links
 
-Optional -- only needed if `app/db/game_updater.py` is exercised, matching the
-env vars `lib/game-updater.ts` already reads:
+Optional -- only needed if `app/db/game_updater.py` is exercised, the same env
+vars its retired TS twin (`lib/game-updater.ts`, deleted in CR-108) used to
+read:
 
     FOOTBALLDATA_API_KEY=...
     FOOTBALLDATA_API_URL=https://api.football-data.org/v4
@@ -91,7 +92,8 @@ though note the Heroku build currently does *not* pass `--no-dev`, see
                             fallback mount that serves ../out (CR-106 AC5)
       core/
         config.py            env vars (JWT_SECRET, SCORING_API_KEY, NEXTAUTH_URL, ...)
-        security.py          JWT issuance/verification (port of lib/auth-utils.ts)
+        security.py          JWT issuance/verification (originally ported from
+                            lib/auth-utils.ts, which CR-108 later deleted)
         auth_deps.py          FastAPI dependencies for auth/authorization
         responses.py          exception handlers -> consistent error JSON
         security_headers.py   ASGI middleware, port of next.config.mjs's headers()
@@ -105,10 +107,12 @@ though note the Heroku build currently does *not* pass `--no-dev`, see
         games.py               Rank 4: games (read-only)
         picks.py               Rank 5: picks
         invitations.py         Rank 6: league invitations
-        scoring.py             Rank 7: port of lib/scoring.ts
+        scoring.py             Rank 7: originally ported from lib/scoring.ts
+                            (deleted in CR-108), now the sole live implementation
         results.py             Rank 7: scoreboard/results/season-summary
         player_profile.py      Rank 7: player profile aggregation
-        game_updater.py        Rank 7: port of lib/game-updater.ts
+        game_updater.py        Rank 7: originally ported from lib/game-updater.ts
+                            (deleted in CR-108), now the sole live implementation
       models/                 Pydantic models, one module per types/*.ts file, plus
                             a few Python-only additions (team_picks_remaining.py,
                             player_profile.py, results.py, requests.py) -- see

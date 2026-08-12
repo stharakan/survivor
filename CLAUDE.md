@@ -36,9 +36,12 @@ backend, kept in dependency-rank order (see `api/README.md` and
 invitations → scoring/results. Each `api/app/db/*.py`, `api/app/models/*.py`, and
 `api/app/routers/*.py` module's docstring names the TS file/lines it ports and
 calls out any intentional deviation (e.g. `api/app/core/auth_deps.py`'s status-code
-fix, `api/app/core/security.py` vs `lib/auth-utils.ts`). When touching auth,
-scoring, or picks logic, check whether the equivalent TS file still needs a
-matching change — see "What's still TypeScript" below.
+fix). `api/app/db/scoring.py` and `api/app/db/game_updater.py` are now the sole
+live implementations of scoring and game-score-updating — their TS twins
+(`lib/scoring.ts`, `lib/game-updater.ts`) were deleted in CR-108 once nothing
+still called them. When touching auth, scoring, or picks logic, check whether
+an equivalent TS file still needs a matching change — see "What's still
+TypeScript" below.
 
 **Golden-fixture parity**: `lib/game-utils.ts` (pick-lock / game-status rules) and
 `api/app/utils/game_utils.py` are two independent implementations of the same
@@ -50,12 +53,15 @@ sync.
 
 ### What's still TypeScript
 
-`lib/db.ts`, `lib/mongodb.ts`, `lib/auth-utils.ts`, `lib/scoring.ts`, and
-`lib/game-updater.ts` are **no longer used by the web app at runtime** (no more
-`app/api/*` to call them) but are still live — they back the Node ops scripts in
-`scripts/` (`init-db.ts`, `create-epl-league.ts`, `update-games.ts`,
-`backfill-external-ids.ts`, `clone-prod-to-dev.ts`, `calculate-scores.ts`), which
-were explicitly kept out of the CR-105 migration scope. `lib/api.ts` is just a
+`lib/db.ts` and `lib/mongodb.ts` are **no longer used by the web app at
+runtime** (no more `app/api/*` to call them) but are still live — they back the
+Node ops scripts in `scripts/` (`init-db.ts`, `create-epl-league.ts`,
+`backfill-external-ids.ts`, `clone-prod-to-dev.ts`), which were explicitly kept
+out of the CR-105 migration scope. `lib/auth-utils.ts`, `lib/scoring.ts`, and
+`lib/game-updater.ts` were retired in CR-108 — their only callers were dead
+code or an orphaned direct-Mongo script (`scripts/update-games.ts`, superseded
+by the HTTP client `scripts/update-game-scores.js`, same pattern as
+`scripts/calculate-scores.js`). `lib/api.ts` is just a
 re-export shim for `lib/api-client.ts`, which is what frontend code actually calls
 — thin `fetch()` wrappers hitting `/api/*` with `credentials: 'include'` (auth is
 an httpOnly `auth-token` cookie, now issued/verified directly by FastAPI, not
@@ -84,9 +90,9 @@ The whole frontend is built around league-scoped context:
 - `npm run lint` — ESLint (also `ignoreDuringBuilds: true` — doesn't block builds)
 - `npm test` / `npm run test:watch` — Jest (`jest.config.js`; covers `lib/**`,
   tests live in `lib/__tests__/`)
-  - single test: `npx jest lib/__tests__/scoring.test.ts`, or `-t "<name>"` to
-    filter by test name
-- `npm run calculate-scores` — run scoring calculation script directly (tsx)
+  - single test: `npx jest lib/__tests__/game-utils.test.ts`, or `-t "<name>"`
+    to filter by test name
+- `npm run calculate-scores` — trigger scoring recomputation via HTTP client
 - `npm run clone-prod-to-dev` — clone prod Mongo data into a dev DB (uses `.env.local`)
 
 TypeScript build errors and ESLint are both ignored during `next build`
@@ -124,9 +130,9 @@ app/                    Next.js pages (App Router), all under output:'export'
 components/             Shared UI incl. league-guard.tsx, admin-guard.tsx, navbar.tsx
 components/ui/          shadcn/ui, customized for the retro pixel theme
 hooks/                  use-auth.tsx, use-league.tsx (context providers)
-lib/                    api-client.ts (frontend->API), game-utils.ts + scoring.ts
-                        (parity-tested against Python), db.ts/mongodb.ts/
-                        auth-utils.ts/game-updater.ts (ops-script-only now)
+lib/                    api-client.ts (frontend->API), game-utils.ts
+                        (parity-tested against Python), db.ts/mongodb.ts
+                        (ops-script-only now)
 types/                  Shared TS types — each has a Pydantic counterpart under api/app/models/
 scripts/                Node/tsx ops scripts (seeding, backfills, prod->dev clone)
 test-fixtures/          game-utils-golden.json — shared TS/Python parity fixture
@@ -164,7 +170,7 @@ JWT_SECRET=...              # falls back to 'fallback-secret' if unset — flagg
 SCORING_API_KEY=...         # X-API-Key for POST /admin/recompute-scores, /admin/update-game-scores
 NEXTAUTH_URL=...            # used to build password-reset magic links
 ```
-`app/db/game_updater.py` (and its TS twin `lib/game-updater.ts`) additionally read
+`app/db/game_updater.py` additionally reads
 `FOOTBALLDATA_API_KEY`, `FOOTBALLDATA_API_URL`, `FOOTBALLDATA_COMPETITION_CODE`,
 `FOOTBALLDATA_REQUEST_DELAY`, `CURRENT_SEASON`, `BULK_QUERY_DAYS_BACK`,
 `BULK_QUERY_DAYS_FORWARD`, `EXCLUDE_SEASONS`.

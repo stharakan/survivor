@@ -57,8 +57,8 @@ from a Next.js-does-everything app to a split architecture:
 
 A handful of Node scripts under `scripts/` (seeding, backfills, prod→dev
 clone) still talk to MongoDB directly via the legacy TypeScript data layer
-(`lib/db.ts`, `lib/mongodb.ts`, etc.) — see `CLAUDE.md`'s "What's still
-TypeScript" section for details.
+(`lib/db.ts`, `lib/mongodb.ts`) — see `CLAUDE.md`'s "What's still TypeScript"
+section for details.
 
 For the full architectural rundown (why two copies of some logic exist,
 golden-fixture parity testing, directory map, ticket workflow) see
@@ -91,9 +91,9 @@ app/                    Next.js pages (App Router), all under output: 'export'
 components/             Shared UI incl. league-guard.tsx, admin-guard.tsx, navbar.tsx
 components/ui/          shadcn/ui, customized for the retro pixel theme
 hooks/                  use-auth.tsx, use-league.tsx (context providers)
-lib/                    api-client.ts (frontend -> API), game-utils.ts + scoring.ts
-                        (parity-tested against Python); db.ts/mongodb.ts/
-                        auth-utils.ts/game-updater.ts (ops-script-only now)
+lib/                    api-client.ts (frontend -> API), game-utils.ts
+                        (parity-tested against Python); db.ts/mongodb.ts
+                        (ops-script-only now)
 types/                  Shared TS types -- each has a Pydantic counterpart under api/app/models/
 scripts/                Node/tsx ops scripts (seeding, backfills, prod->dev clone)
 test-fixtures/          game-utils-golden.json -- shared TS/Python parity fixture
@@ -133,8 +133,8 @@ SCORING_API_KEY=...         # X-API-Key for POST /api/admin/recompute-scores, /a
 NEXTAUTH_URL=...            # used to build password-reset magic links
 ```
 
-`app/db/game_updater.py` (and its TS twin `lib/game-updater.ts`) additionally
-read `FOOTBALLDATA_API_KEY`, `FOOTBALLDATA_API_URL`,
+`app/db/game_updater.py` additionally
+reads `FOOTBALLDATA_API_KEY`, `FOOTBALLDATA_API_URL`,
 `FOOTBALLDATA_COMPETITION_CODE`, `FOOTBALLDATA_REQUEST_DELAY`,
 `CURRENT_SEASON`, `BULK_QUERY_DAYS_BACK`, `BULK_QUERY_DAYS_FORWARD`,
 `EXCLUDE_SEASONS`.
@@ -181,7 +181,7 @@ read `FOOTBALLDATA_API_KEY`, `FOOTBALLDATA_API_URL`,
 # Frontend (Jest) -- covers lib/**, tests live in lib/__tests__/
 npm test
 npm run test:watch
-npx jest lib/__tests__/scoring.test.ts        # single file
+npx jest lib/__tests__/game-utils.test.ts      # single file
 npx jest -t "some test name"                   # filter by name
 
 # Backend (pytest)

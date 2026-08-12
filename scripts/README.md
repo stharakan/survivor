@@ -3,10 +3,10 @@
 Node/tsx ops scripts for seeding, importing fixtures, and prod maintenance.
 These are explicitly **out of the CR-105/CR-106 migration scope** (see the
 root `CLAUDE.md`'s "What's still TypeScript" section) — they talk to MongoDB
-directly through the legacy `lib/db.ts` / `lib/mongodb.ts` / `lib/game-updater.ts`
-data layer, or call the FastAPI backend's admin endpoints over HTTP. Run them
-with `npx tsx <script>.ts` (or `node <script>.js` for the plain-JS ones), from
-the repo root.
+directly through the legacy `lib/db.ts` / `lib/mongodb.ts` data layer, or call
+the FastAPI backend's admin endpoints over HTTP. Run them with `npx tsx
+<script>.ts` (or `node <script>.js` for the plain-JS ones), from the repo
+root.
 
 ## Direct-DB scripts
 
@@ -45,14 +45,6 @@ external ID. Requires `FOOTBALLDATA_API_KEY`.
 ```bash
 export FOOTBALLDATA_API_KEY="your-football-data-api-key"
 npx tsx scripts/backfill-external-ids.ts
-```
-
-### `update-games.ts`
-Calls `lib/game-updater.ts`'s `updateGameScores()` directly (no HTTP hop) to
-fetch and apply the latest scores/statuses from the Football Data API. Reads
-the `FOOTBALLDATA_*` env vars documented in the root `CLAUDE.md`.
-```bash
-npx tsx scripts/update-games.ts
 ```
 
 ### `clone-prod-to-dev.ts`
@@ -116,4 +108,5 @@ node scripts/update-game-scores.js
 - **Draw/tie**: 1 point
 - **Loss**: 0 points + 1 strike
 
-(Applied by `api/app/db/scoring.py`, parity-ported from `lib/scoring.ts`.)
+(Applied by `api/app/db/scoring.py`, the sole live implementation since
+`lib/scoring.ts` was retired in CR-108.)
