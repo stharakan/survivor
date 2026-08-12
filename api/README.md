@@ -1,23 +1,27 @@
 # Survivor League API (Python / FastAPI)
 
-Phase 1 of the CR-105 full-migration path (see `../tickets/CR-105-FINDINGS.md` and
-`../tickets/CR-105-PHASE1-REPORT.md`). This is the data-access layer + Pydantic
-contracts -- **no HTTP routes are wired up yet**, that's Phase 2.
+This is the full backend for the Survivor League app: a line-by-line port of
+what used to be the Next.js backend (CR-105), now with the complete HTTP
+route layer wired up (CR-105 Phase 2) and serving the static frontend export
+from the same process (CR-106). See `../tickets/done/CR-105-FINDINGS.md`,
+`../tickets/done/CR-105-PHASE2-REPORT.md`, and
+`../tickets/done/CR-106-frontend-static-export-cutover.md` for the migration
+history, and the root `CLAUDE.md` for the overall two-runtime architecture.
 
 ## Install
 
-Requires [uv](https://docs.astral.sh/uv/) (Python 3.10+ under the hood -- the app
-uses `X | Y` union syntax and `list[T]` generics in a few places). The dependency
-manifest (`pyproject.toml`, `uv.lock`, `.python-version`) lives at the **repo
-root**, not here -- that's a Heroku buildpack requirement (see the root
-`pyproject.toml`'s comment), even though all the actual code stays under `api/`.
+Requires [uv](https://docs.astral.sh/uv/) (Python 3.10+ under the hood -- the
+app uses `X | Y` union syntax and `list[T]` generics in a few places). The
+dependency manifest (`pyproject.toml`, `uv.lock`, `.python-version`) lives at
+the **repo root**, not here -- that's a Heroku buildpack requirement (see the
+root `pyproject.toml`'s comment), even though all the actual code stays under
+`api/`.
 
     cd api
     uv sync --project ..
 
 This creates a `.venv` at the repo root pinned to the `.python-version` there,
-with every dependency resolved exactly per `uv.lock`. `python3 -m venv` + `pip
-install` is no longer how this is installed.
+with every dependency resolved exactly per `uv.lock`.
 
 ## Configure
 
@@ -26,8 +30,17 @@ Reuses the same Mongo env vars as the Next.js app (see the root `CLAUDE.md`):
     MONGODB_URI=mongodb://localhost:27017
     MONGODB_DB_NAME=survivor-league
 
-Optional -- only needed once `app/db/game_updater.py` is actually exercised
-(Phase 2+), matching the env vars `lib/game-updater.ts` already reads:
+Plus FastAPI-specific vars (put these in `api/.env`, not committed -- no
+loader is wired into `app/main.py`, source it yourself):
+
+    JWT_SECRET=...             # falls back to 'fallback-secret' if unset -- flagged
+                                # insecure default, kept for parity with the TS routes
+    SCORING_API_KEY=...        # X-API-Key for POST /api/admin/recompute-scores,
+                                # /api/admin/update-game-scores
+    NEXTAUTH_URL=...           # used to build password-reset magic links
+
+Optional -- only needed if `app/db/game_updater.py` is exercised, matching the
+env vars `lib/game-updater.ts` already reads:
 
     FOOTBALLDATA_API_KEY=...
     FOOTBALLDATA_API_URL=https://api.football-data.org/v4
@@ -38,68 +51,111 @@ Optional -- only needed once `app/db/game_updater.py` is actually exercised
     BULK_QUERY_DAYS_FORWARD=7
     EXCLUDE_SEASONS=[{"sportsLeague":"EPL","season":"2024/2025"}]
 
-Put these in `api/.env` (not committed) and load them however you prefer
-(`python-dotenv`, shell export, etc.) -- no `.env` loader is wired into
-`app/main.py` yet, since nothing reads env vars at import time except
-`app/db/game_updater.py`'s module-level constants.
-
 ## Run
 
     uv run --project .. uvicorn app.main:app --reload
 
-(`--project ..` points uv at the root `pyproject.toml`/`uv.lock` for dependency
-resolution; the command itself still runs with `api/` as its cwd, same as the
-Procfile, so `app.main:app` resolves the same way in dev and in prod.)
+(`--project ..` points uv at the root `pyproject.toml`/`uv.lock` for
+dependency resolution; the command itself still runs with `api/` as its cwd,
+same as the `Procfile`, so `app.main:app` resolves the same way in dev and in
+prod.)
 
-`GET /health` is the only live route today -- it confirms the app boots and the
-Mongo client was constructed. Everything else (`app/db/*.py`, `app/models/*.py`)
-is a library of functions/models for Phase 2 to wire into real routes.
+`GET /health` confirms the app boots and the Mongo client was constructed.
+
+If a Next.js static export exists at `../out` (i.e. you've run `npm run
+build` from the repo root), `app/main.py` also mounts it and serves the whole
+frontend from this same process at `http://localhost:8000/` -- useful for
+testing the production topology locally. In everyday frontend development you
+still run `npm run dev` separately (see the root README) and just point it at
+this server's `/api/*`.
+
+## Test
+
+    uv run --project .. pytest                                 # all tests
+    uv run --project .. pytest tests/test_game_utils_parity.py  # single file
+    uv run --project .. pytest tests/test_picks.py::test_name   # single test
+
+`pytest.ini` pins one asyncio event loop for the whole test session (the
+Motor client is a module-level singleton bound to whatever loop first created
+it -- per-test loops orphan it). `test_game_updater_live_mongo.py` and
+`test_live_mongo_smoke.py` hit a real MongoDB and are part of the `dev`
+dependency group only (`uv sync --no-dev` excludes them from a prod install --
+though note the Heroku build currently does *not* pass `--no-dev`, see
+`pyproject.toml`'s comment).
 
 ## Layout
 
     app/
-      main.py            FastAPI app instance (no routes yet)
-      db/
-        mongodb.py        Motor client + Collections (port of lib/mongodb.ts)
-        _shape.py          shared Mongo-doc -> Pydantic-model shaping helpers
-        auth.py            Rank 1: users (lib/db.ts user operations)
-        leagues.py         Rank 2: leagues + start_new_season (NEW capability,
-                           no TS equivalent -- see CR-105-FINDINGS.md Addendum)
-        memberships.py     Rank 3: league memberships
-        games.py           Rank 4: games (read-only; createGame/createGameIndexes
-                           dropped, see cut list)
-        picks.py           Rank 5: picks (createPick's draw-handling bug fixed)
-        invitations.py     Rank 6: league invitations
-        scoring.py         Rank 7: port of lib/scoring.ts
-        results.py         Rank 7: scoreboard/results/season-summary (lib/db.ts)
-        game_updater.py    Rank 7: port of lib/game-updater.ts
-      models/              one module per types/*.ts file, plus new models
-                           (team_picks_remaining.py, player_profile.py,
-                           results.py) not in the original types/ export list --
-                           see ../tickets/CR-105-PHASE1-REPORT.md for what's new
-                           and why.
+      main.py               FastAPI app instance: router registration, security
+                            headers middleware, /health, and the static-file
+                            fallback mount that serves ../out (CR-106 AC5)
+      core/
+        config.py            env vars (JWT_SECRET, SCORING_API_KEY, NEXTAUTH_URL, ...)
+        security.py          JWT issuance/verification (port of lib/auth-utils.ts)
+        auth_deps.py          FastAPI dependencies for auth/authorization
+        responses.py          exception handlers -> consistent error JSON
+        security_headers.py   ASGI middleware, port of next.config.mjs's headers()
+      db/                    Mongo access, one module per domain, in Rank 1-7 order
+                            (see "Layout" below and api's routers/ for how they're used):
+        mongodb.py            Motor client + Collections (port of lib/mongodb.ts)
+        _shape.py              shared Mongo-doc -> Pydantic-model shaping helpers
+        auth.py                Rank 1: users (lib/db.ts user operations)
+        leagues.py             Rank 2: leagues + start_new_season (no TS equivalent)
+        memberships.py         Rank 3: league memberships
+        games.py               Rank 4: games (read-only)
+        picks.py               Rank 5: picks
+        invitations.py         Rank 6: league invitations
+        scoring.py             Rank 7: port of lib/scoring.ts
+        results.py             Rank 7: scoreboard/results/season-summary
+        player_profile.py      Rank 7: player profile aggregation
+        game_updater.py        Rank 7: port of lib/game-updater.ts
+      models/                 Pydantic models, one module per types/*.ts file, plus
+                            a few Python-only additions (team_picks_remaining.py,
+                            player_profile.py, results.py, requests.py) -- see
+                            ../tickets/done/CR-105-PHASE1-REPORT.md for what's new.
+      routers/                HTTP routes, mirrors db/'s domain split:
+        auth.py               POST /api/auth/{login,logout,register}, GET /api/auth/verify
+        users.py               GET/PATCH /api/users/{user_id}, GET /api/users/{user_id}/leagues
+        password_reset.py      POST /api/admin/users/{user_id}/generate-reset-link,
+                              GET/POST /api/reset-password/{token}
+        leagues.py              GET/POST /api/leagues, GET/PATCH /api/leagues/{league_id}
+        members.py              GET/PATCH/DELETE /api/leagues/{league_id}/members[/{member_id}]
+        games.py                GET /api/games
+        picks.py                 GET/POST /api/picks, GET /api/picks/remaining
+        invitations.py           GET/POST /api/leagues/{league_id}/invitations,
+                                GET /api/invite/{token}, POST /api/invite/{token}/accept,
+                                DELETE /api/invitations/{invitation_id}
+        results.py                GET /api/leagues/{league_id}/{results,scoreboard,
+                                season-summary,players/{user_id}/profile}
+        admin_scoring.py           POST /api/admin/{recompute-scores,update-game-scores}
+                                (X-API-Key protected)
+      utils/game_utils.py      Parity-tested twin of lib/game-utils.ts (pick-lock /
+                            game-status rules) -- see the root CLAUDE.md's
+                            "Golden-fixture parity" section.
 
-Rank numbers match CR-105-FINDINGS.md Table 1's dependency order (auth -> leagues
--> memberships -> games -> picks -> invitations -> scoring/results); Phase 2
-should build routes in the same order.
+Rank numbers match `CR-105-FINDINGS.md` Table 1's dependency order (auth ->
+leagues -> memberships -> games -> picks -> invitations -> scoring/results);
+the router layer was built in the same order.
 
-## Not in this phase
+## Auth
 
-- **No routes** (`app/api/*` equivalents) -- Phase 2.
-- **No JWT/auth verification** -- Phase 2. The auth boundary is already decided
-  (FastAPI verifies JWTs directly for browser routes, no BFF proxy back to
-  Next.js); `python-jose` is in `requirements.txt` ready for that work.
-- **No `lib/game-utils.ts` port** (pick-lock/game-status rules) -- part of
-  Phase 2's picks work, per the CR-105 scope split. Several functions here
-  (`picks.py`, `games.py::get_game_time_info_by_id`) are written to be consumed
-  by that future logic but don't implement it themselves.
+FastAPI issues and verifies JWTs directly (`app/core/security.py`) -- no BFF
+proxy back to Next.js. `POST /api/auth/login` and `/register` set the JWT in
+an httpOnly `auth-token` cookie (7-day expiry, see `app/core/config.py`);
+`app/core/auth_deps.py` provides the FastAPI dependencies that decode that
+cookie and enforce league membership / admin checks on protected routes.
+
+## Notes
+
 - **No dev-seed script port** (`initializeDefaultData`, `createGame`,
   `createGameIndexes`, `createInvitationIndexes`) -- kept in Next.js/TS by the
   CR-105 cut-list decision; `scripts/init-db.ts` keeps talking to MongoDB
   directly and is unaffected by this migration.
-- **No password-reset data-access functions** -- that logic lives inline in
-  `app/api/admin/users/[userId]/generate-reset-link/route.ts` and
-  `app/api/reset-password/[token]/route.ts` in the TS app, not in `lib/db.ts`,
-  so it's out of this phase's "port lib/db.ts" scope. The Pydantic models
-  (`app/models/password_reset.py`) are provided so Phase 2's routes have the
-  contract ready when that logic is ported.
+- **Static frontend fallback**: `app/main.py` mounts `../out` (the Next.js
+  static export) last, after all `/api/*` routers, so any unmatched
+  `/api/*` path returns a genuine JSON 404 instead of falling through to the
+  SPA's `out/404.html`.
+- `lib/game-utils.ts` and `app/utils/game_utils.py` are independent
+  implementations of the same pick-lock/game-status rules, both tested
+  against `../test-fixtures/game-utils-golden.json`. Change one, update the
+  fixture, and verify both suites (`npm test` and `pytest`) still pass.
