@@ -4,120 +4,177 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Next.js 15 app for a multi-league Survivor League fantasy football platform with a retro pixel art aesthetic. Users can participate in multiple survivor leagues (EPL, NFL, NBA), pick one team per week, and aim to survive as long as possible.
+Tharakan Bros Survivor League: a multi-league Survivor-pool web app with a retro
+pixel-art aesthetic. Users join one or more leagues (each tied to a sports league —
+EPL, NFL, NBA), pick one team per week, and try to survive as long as possible; each
+team can be picked at most twice per season per league.
+
+## Architecture: two runtimes, one dyno
+
+This app is mid-migration (CR-105/CR-106) from a Next.js-does-everything app to a
+split architecture:
+
+- **Frontend** — Next.js 15 (App Router), built with `output: 'export'`
+  (`next.config.mjs`) into a static `out/` directory. There is **no Node server in
+  production** — no Route Handlers, no middleware, no `next/image` optimization.
+  `app/api/*` route handlers have been deleted entirely.
+- **Backend** — a FastAPI app under `api/app/` is now the *only* backend. It owns
+  all HTTP routes (`api/app/routers/`), MongoDB access (via Motor), JWT
+  issuance/verification, and scoring. In production a single Heroku dyno runs
+  `uvicorn`, which serves `/api/*` from the FastAPI routers and falls back to
+  serving `out/`'s static files for everything else (`api/app/main.py`, mounted
+  last so routers get first crack at `/api/*`).
+- Locally you still run `npm run dev` (Next dev server, calls `/api/*` on
+  whatever origin — proxy/CORS as needed) and `uvicorn` separately; only the
+  production build collapses them onto one origin/dyno.
+
+### Why two copies of some logic exist
+
+`api/app/` is a deliberate line-by-line port of what used to be the Next.js
+backend, kept in dependency-rank order (see `api/README.md` and
+`tickets/done/CR-105-FINDINGS.md`): auth → leagues → memberships → games → picks →
+invitations → scoring/results. Each `api/app/db/*.py`, `api/app/models/*.py`, and
+`api/app/routers/*.py` module's docstring names the TS file/lines it ports and
+calls out any intentional deviation (e.g. `api/app/core/auth_deps.py`'s status-code
+fix, `api/app/core/security.py` vs `lib/auth-utils.ts`). When touching auth,
+scoring, or picks logic, check whether the equivalent TS file still needs a
+matching change — see "What's still TypeScript" below.
+
+**Golden-fixture parity**: `lib/game-utils.ts` (pick-lock / game-status rules) and
+`api/app/utils/game_utils.py` are two independent implementations of the same
+rules, both tested against the same `test-fixtures/game-utils-golden.json` by
+`lib/__tests__/game-utils-parity.test.ts` and `api/tests/test_game_utils_parity.py`.
+If you change pick-lock or game-status logic in one language, update the fixture
+and verify both test suites still pass — that's the only thing keeping them in
+sync.
+
+### What's still TypeScript
+
+`lib/db.ts`, `lib/mongodb.ts`, `lib/auth-utils.ts`, `lib/scoring.ts`, and
+`lib/game-updater.ts` are **no longer used by the web app at runtime** (no more
+`app/api/*` to call them) but are still live — they back the Node ops scripts in
+`scripts/` (`init-db.ts`, `create-epl-league.ts`, `update-games.ts`,
+`backfill-external-ids.ts`, `clone-prod-to-dev.ts`, `calculate-scores.ts`), which
+were explicitly kept out of the CR-105 migration scope. `lib/api.ts` is just a
+re-export shim for `lib/api-client.ts`, which is what frontend code actually calls
+— thin `fetch()` wrappers hitting `/api/*` with `credentials: 'include'` (auth is
+an httpOnly `auth-token` cookie, now issued/verified directly by FastAPI, not
+proxied through Next).
+
+### Multi-league context switching
+
+The whole frontend is built around league-scoped context:
+
+1. **Flow**: Login → League Selection (`/leagues`) → league-scoped pages.
+2. `AuthProvider` (`hooks/use-auth.tsx`) and `LeagueProvider` (`hooks/use-league.tsx`)
+   wrap the app in `app/providers.tsx`; current league is persisted in
+   localStorage.
+3. `LeagueGuard` (`components/league-guard.tsx`) protects league-scoped routes —
+   redirects to `/login` if unauthenticated, `/leagues` if no league selected.
+   `AdminGuard` (`components/admin-guard.tsx`) additionally requires
+   admin membership.
+4. Nearly every FastAPI route and `lib/api-client.ts` call takes a `leagueId`;
+   picks/points/strikes/team-usage are all scoped per league.
 
 ## Development Commands
 
-### Core Commands
-- `npm run dev` - Start development server
-- `npm run build` - Build for production  
-- `npm run start` - Start production server
-- `npm run lint` - Run ESLint
+### Frontend (Next.js)
+- `npm run dev` — dev server
+- `npm run build` — production build (static export to `out/`)
+- `npm run lint` — ESLint (also `ignoreDuringBuilds: true` — doesn't block builds)
+- `npm test` / `npm run test:watch` — Jest (`jest.config.js`; covers `lib/**`,
+  tests live in `lib/__tests__/`)
+  - single test: `npx jest lib/__tests__/scoring.test.ts`, or `-t "<name>"` to
+    filter by test name
+- `npm run calculate-scores` — run scoring calculation script directly (tsx)
+- `npm run clone-prod-to-dev` — clone prod Mongo data into a dev DB (uses `.env.local`)
 
-### No TypeScript or Test Commands
-The project has TypeScript type checking disabled (`ignoreBuildErrors: true`) and no test framework configured.
+TypeScript build errors and ESLint are both ignored during `next build`
+(`next.config.mjs`) — don't rely on `npm run build` to catch type errors; there is
+no separate `tsc --noEmit` script wired up.
 
-## Architecture
+### Backend (FastAPI)
+Dependency manifest (`pyproject.toml`, `uv.lock`, `.python-version`) lives at the
+**repo root** (Heroku Python buildpack requirement), but all code is under `api/`.
 
-### Tech Stack
-- **Framework**: Next.js 15 with App Router
-- **Language**: TypeScript (with strict checking disabled)
-- **Styling**: Tailwind CSS with custom retro theme
-- **UI Components**: shadcn/ui with heavy customization
-- **State Management**: React Context for auth and league management
-- **API**: Mock data in `lib/api.ts` (expects Django REST API backend)
-
-### Key Design Patterns
-
-#### Multi-League Architecture
-The entire app is built around league context switching:
-
-1. **Authentication Flow**: Login → League Selection → League-Scoped Experience
-2. **League Context**: All data (picks, standings, profiles) is league-specific
-3. **Route Protection**: `LeagueGuard` component ensures proper league selection
-4. **Data Scoping**: Every API call includes league context
-
-#### Context Management
-- `AuthProvider` (`hooks/use-auth.tsx`) - User authentication and session
-- `LeagueProvider` (`hooks/use-league.tsx`) - League selection and management
-- Both providers wrap the app in `app/providers.tsx`
-
-#### API Layer
-The API layer has been migrated from mock data to actual Next.js API routes. The application now uses MongoDB with native driver (no ORM) for data persistence. Core authentication and league management APIs are implemented, with additional features marked as "not implemented yet".
-
-### Custom Styling
-- **Retro Theme**: Pixel fonts (Press Start 2P, VT323), custom colors, pixel shadows
-- **Animations**: Custom keyframes for blinking, pixelate effects
-- **Components**: All shadcn/ui components customized for retro aesthetic
-
-### Route Structure
 ```
-/login - Authentication
-/leagues - League selection (post-login)
-/profile - User profile (league-scoped)
-/scoreboard - League standings (league-scoped) 
-/make-picks - Weekly team selection (league-scoped)
-/player/[id] - Individual player profiles (league-scoped)
-/admin/* - League administration pages (admin only)
+cd api
+uv sync --project ..                                      # install deps into repo-root .venv
+uv run --project .. uvicorn app.main:app --reload          # run dev server
+uv run --project .. pytest                                 # run all tests
+uv run --project .. pytest tests/test_game_utils_parity.py # single file
+uv run --project .. pytest tests/test_picks.py::test_name  # single test
+```
+`GET /health` confirms the app boots and the Mongo client constructed.
+`api/pytest.ini` pins one asyncio event loop for the whole test session (the
+Motor client is a module-level singleton bound to whatever loop first created
+it — per-test loops orphan it).
+
+Some tests (`test_game_updater_live_mongo.py`, `test_live_mongo_smoke.py`) hit a
+real MongoDB and are part of the `dev` dependency group, not run by default in a
+prod install (`uv sync --no-dev` — though note the Heroku build currently does
+*not* pass `--no-dev`, see `pyproject.toml`'s comment).
+
+## Directory Map
+
+```
+app/                    Next.js pages (App Router), all under output:'export'
+  admin/, invite/, leagues/, login/, make-picks/, picks-remaining/,
+  player/, profile/, register/, reset-password/, results/, rules/, scoreboard/
+components/             Shared UI incl. league-guard.tsx, admin-guard.tsx, navbar.tsx
+components/ui/          shadcn/ui, customized for the retro pixel theme
+hooks/                  use-auth.tsx, use-league.tsx (context providers)
+lib/                    api-client.ts (frontend->API), game-utils.ts + scoring.ts
+                        (parity-tested against Python), db.ts/mongodb.ts/
+                        auth-utils.ts/game-updater.ts (ops-script-only now)
+types/                  Shared TS types — each has a Pydantic counterpart under api/app/models/
+scripts/                Node/tsx ops scripts (seeding, backfills, prod->dev clone)
+test-fixtures/          game-utils-golden.json — shared TS/Python parity fixture
+
+api/app/
+  main.py               FastAPI app, router registration, static-file fallback mount
+  core/                 config.py (env vars), security.py (JWT), auth_deps.py
+                        (auth/authorization helpers), responses.py (error handling),
+                        security_headers.py (ported from next.config.mjs headers())
+  db/                   Mongo access, one module per domain, in Rank 1-7 order
+                        (auth, leagues, memberships, games, picks, invitations,
+                        scoring, results) — see api/README.md's Layout section
+  models/                Pydantic models, one module per types/*.ts file (plus a
+                        few Python-only additions — see CR-105-PHASE1-REPORT.md)
+  routers/               HTTP routes, mirrors db/'s domain split
+  utils/game_utils.py    Parity-tested twin of lib/game-utils.ts
+
+tickets/                Ticket-driven workflow; done tickets move to tickets/done/.
+                        ID prefixes: SUR- (feature), CR- (code review/refactor
+                        findings), PERF-, SEC- — each is its own ticket file.
 ```
 
-## Important Implementation Notes
+## Environment Variables
 
-### League Context Requirements
-- All league-scoped pages must be wrapped with `LeagueGuard`
-- API functions require `leagueId` parameter
-- League selection persisted in localStorage
-- Logo click returns to league selection
-
-### Data Models
-Key TypeScript types are defined in `types/` directory:
-- `League` - Survivor league information
-- `LeagueMembership` - User's participation in a league
-- `User` - User account information
-- `Team` - Sports teams (EPL, NFL, etc.)
-- `Game` - Individual matches/games
-- `Pick` - User's weekly team selection
-- `Player` - Scoreboard player data
-
-### API Integration
-The app now uses Next.js API routes with MongoDB backend. Authentication is JWT-based with HTTP-only cookies. The API routes are located in `app/api/` and follow RESTful patterns.
-
-### Authentication Pattern
-- JWT token-based with HTTP-only cookies
-- Real authentication with MongoDB backend
-- User state managed via React Context
-- Automatic league selection on login
-
-## Development Guidelines
-
-### Adding New Features
-1. Determine if feature is league-scoped or global
-2. Add necessary TypeScript types to `types/` directory
-3. Create API functions in `lib/api.ts` with proper mock data
-4. Implement UI components following retro styling patterns
-5. Use existing shadcn/ui components as base
-
-### Styling Conventions
-- Use Tailwind's custom retro color palette
-- Apply pixel shadows for elevated elements
-- Use pixel fonts for headings and retro font for body text
-- Follow existing component patterns for consistency
-
-### League-Scoped Development
-- Always use `useLeague()` hook for league context
-- Include league ID in all relevant API calls
-- Test functionality across different league selections
-- Ensure proper route protection with `LeagueGuard`
-
-## Environment Setup
-
-Required environment variables:
+Copy `.env.example` to `.env.local` for Next.js/scripts. Both runtimes read the
+same Mongo vars:
 ```
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB_NAME=survivor-league
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-secret-key-here
-JWT_SECRET=your-jwt-secret-here
 ```
+FastAPI-specific (`api/app/core/config.py`), put in `api/.env` (not committed, no
+loader wired into `app/main.py` — source it yourself):
+```
+JWT_SECRET=...              # falls back to 'fallback-secret' if unset — flagged insecure default, kept for parity
+SCORING_API_KEY=...         # X-API-Key for POST /admin/recompute-scores, /admin/update-game-scores
+NEXTAUTH_URL=...            # used to build password-reset magic links
+```
+`app/db/game_updater.py` (and its TS twin `lib/game-updater.ts`) additionally read
+`FOOTBALLDATA_API_KEY`, `FOOTBALLDATA_API_URL`, `FOOTBALLDATA_COMPETITION_CODE`,
+`FOOTBALLDATA_REQUEST_DELAY`, `CURRENT_SEASON`, `BULK_QUERY_DAYS_BACK`,
+`BULK_QUERY_DAYS_FORWARD`, `EXCLUDE_SEASONS`.
 
-The project now uses MongoDB as the backend database. Set up a local MongoDB instance or use MongoDB Atlas cloud service.
+## Ticket Workflow
+
+Work is tracked as markdown ticket files in `tickets/` (moved to `tickets/done/`
+on completion). Matching Claude Code slash commands exist for the lifecycle:
+`create-ticket`, `implement-ticket`, `review-implementation`, `verify-done`,
+`debug-implementation`, `write-tests`, `create-pr`. Read the relevant ticket file
+fully before implementing — tickets here carry detailed root-cause analysis and
+explicit scope-cut lists (see `tickets/done/CR-105-FINDINGS.md` for the depth
+expected), not just a one-line description.
