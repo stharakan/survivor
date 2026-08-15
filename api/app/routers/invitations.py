@@ -13,7 +13,7 @@ from app.db.invitations import (
     accept_invitation,
     create_league_invitation,
     get_invitation_by_token,
-    get_invitation_league_id,
+    get_invitation_league_season_id,
     get_league_invitations,
     revoke_invitation,
 )
@@ -34,7 +34,7 @@ async def delete_invitation(invitation_id: str, request: Request) -> dict:
     """
     auth_user = await verify_auth_token(request)
 
-    league_id = await get_invitation_league_id(invitation_id)
+    league_id = await get_invitation_league_season_id(invitation_id)
     if league_id is None:
         raise ApiError("Invitation not found", 404)
 

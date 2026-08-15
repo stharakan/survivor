@@ -19,6 +19,9 @@ DELETE-route masking bug specifically cannot recur. Not one of the two bugs
 this ticket named for the port (Pick draw-handling, League id/createdBy
 typing) -- flagged here as an additional judgment call, per the working
 agreement.
+
+SUR-010: all `league_id` params renamed to `league_season_id`; audit_logs
+write `leagueSeasonId` instead of `leagueId`.
 """
 from dataclasses import dataclass
 from typing import Optional
@@ -86,12 +89,12 @@ async def verify_auth_token(request: Request) -> AuthUser:
     return AuthUser(user_id=payload["userId"], email=payload["email"])
 
 
-async def get_authorization_context(user_id: str, league_id: str) -> AuthorizationContext:
+async def get_authorization_context(user_id: str, league_season_id: str) -> AuthorizationContext:
     """Port of lib/auth-utils.ts:40-57 `getAuthorizationContext`."""
     user = await get_user_by_id(user_id)
     if user is None:
         raise ApiError("User not found", 404)
-    membership = await get_membership_for_user(league_id, user_id)
+    membership = await get_membership_for_user(league_season_id, user_id)
     return AuthorizationContext(
         user=user, membership=membership, is_admin=bool(membership and membership.isAdmin)
     )
@@ -99,12 +102,12 @@ async def get_authorization_context(user_id: str, league_id: str) -> Authorizati
 
 async def validate_admin_permission(
     requesting_user_id: str,
-    league_id: str,
+    league_season_id: str,
     target_member_id: str,
     new_admin_status: Optional[bool] = None,
 ) -> None:
     """Port of lib/auth-utils.ts:127-163 `validateAdminPermission`."""
-    requesting_auth = await get_authorization_context(requesting_user_id, league_id)
+    requesting_auth = await get_authorization_context(requesting_user_id, league_season_id)
 
     if not requesting_auth.membership:
         raise ApiError("You are not a member of this league", 403)
@@ -112,7 +115,7 @@ async def validate_admin_permission(
         raise ApiError("Only league administrators can modify member admin status", 403)
 
     if new_admin_status is not None:
-        target_member = await get_league_member(league_id, target_member_id)
+        target_member = await get_league_member(league_season_id, target_member_id)
         if not target_member:
             raise ApiError("Target member not found", 404)
 
@@ -125,7 +128,7 @@ async def validate_admin_permission(
 
 async def log_admin_privilege_change(
     requesting_user_id: str,
-    league_id: str,
+    league_season_id: str,
     target_member_id: str,
     old_admin_status: bool,
     new_admin_status: bool,
@@ -143,7 +146,7 @@ async def log_admin_privilege_change(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "action": "admin_privilege_change",
         "requestingUserId": requesting_user_id,
-        "leagueId": league_id,
+        "leagueSeasonId": league_season_id,
         "targetMemberId": target_member_id,
         "changes": {"isAdmin": {"from": old_admin_status, "to": new_admin_status}},
         "context": additional_context,
@@ -156,24 +159,24 @@ async def log_admin_privilege_change(
 
 
 async def authorize_request(
-    request: Request, league_id: str, member_id: str, updates: dict
+    request: Request, league_season_id: str, member_id: str, updates: dict
 ) -> AuthorizationContext:
     """Port of lib/auth-utils.ts:214-232 `authorizeRequest` -- the complete
-    authorization check for `PATCH /leagues/{leagueId}/members/{memberId}`."""
+    authorization check for `PATCH /league-seasons/{leagueSeasonId}/members/{memberId}`."""
     auth_user = await verify_auth_token(request)
-    auth_context = await get_authorization_context(auth_user.user_id, league_id)
+    auth_context = await get_authorization_context(auth_user.user_id, league_season_id)
 
     if isinstance(updates.get("isAdmin"), bool):
-        await validate_admin_permission(auth_user.user_id, league_id, member_id, updates["isAdmin"])
+        await validate_admin_permission(auth_user.user_id, league_season_id, member_id, updates["isAdmin"])
 
     return auth_context
 
 
-async def _require_active_membership(user_id: str, league_id: str) -> AuthorizationContext:
+async def _require_active_membership(user_id: str, league_season_id: str) -> AuthorizationContext:
     """Shared active-membership check factored out of `require_league_membership`
     so `require_league_paid` below can layer the isPaid gate on top without
     duplicating the membership/status logic."""
-    auth_context = await get_authorization_context(user_id, league_id)
+    auth_context = await get_authorization_context(user_id, league_season_id)
 
     if not auth_context.membership:
         raise ApiError("You are not a member of this league", 403)
@@ -184,16 +187,16 @@ async def _require_active_membership(user_id: str, league_id: str) -> Authorizat
     return auth_context
 
 
-async def require_league_membership(request: Request, league_id: str) -> AuthUser:
+async def require_league_membership(request: Request, league_season_id: str) -> AuthUser:
     """Port of lib/auth-utils.ts:238-259 `verifyLeagueMembership` -- used by
     every league-scoped GET route (members, results, scoreboard,
     season-summary, the league detail route itself)."""
     auth_user = await verify_auth_token(request)
-    await _require_active_membership(auth_user.user_id, league_id)
+    await _require_active_membership(auth_user.user_id, league_season_id)
     return auth_user
 
 
-async def require_league_paid(request: Request, league_id: str) -> AuthUser:
+async def require_league_paid(request: Request, league_season_id: str) -> AuthUser:
     """No TS equivalent -- new gate added so an admin marking a member unpaid
     (`isPaid` on `LeagueMembership`, toggled via `PATCH
     .../members/{memberId}`) actually blocks that member from submitting
@@ -202,7 +205,7 @@ async def require_league_paid(request: Request, league_id: str) -> AuthUser:
     `require_league_membership`, since payment status should only gate picks
     -- results/scoreboard/members reads stay open to unpaid members."""
     auth_user = await verify_auth_token(request)
-    auth_context = await _require_active_membership(auth_user.user_id, league_id)
+    auth_context = await _require_active_membership(auth_user.user_id, league_season_id)
 
     if not auth_context.membership.isPaid:
         raise ApiError("Your league payment is marked unpaid -- picks are locked until an admin marks you paid", 403)

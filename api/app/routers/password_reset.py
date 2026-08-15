@@ -8,6 +8,9 @@ lib/db.ts -- there's no data-access-layer module to port from (Phase 1 shipped
 only the Pydantic models, app/models/password_reset.py). Ported inline here
 too, for the same reason: it's route-level orchestration (token generation,
 admin authz, audit logging), not a reusable data-access primitive.
+
+SUR-010: leagueId→leagueSeasonId in token writes and audit logs; validate_reset_token
+now looks up the league via LEAGUE_SEASONS + LEAGUES join to get the name.
 """
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -36,7 +39,7 @@ async def generate_reset_link(user_id: str, body: GenerateResetLinkRequest, requ
             "Cannot generate reset link for your own account. Use account settings instead.", 400
         )
 
-    admin_auth = await get_authorization_context(auth_user.user_id, body.leagueId)
+    admin_auth = await get_authorization_context(auth_user.user_id, body.leagueSeasonId)
     if not admin_auth.membership:
         raise ApiError("You are not a member of this league", 403)
     if not admin_auth.is_admin:
@@ -46,7 +49,7 @@ async def generate_reset_link(user_id: str, body: GenerateResetLinkRequest, requ
     if not target_user:
         raise ApiError("Target user not found", 404)
 
-    target_auth = await get_authorization_context(user_id, body.leagueId)
+    target_auth = await get_authorization_context(user_id, body.leagueSeasonId)
     if not target_auth.membership:
         raise ApiError("Target user is not a member of this league", 403)
 
@@ -59,7 +62,7 @@ async def generate_reset_link(user_id: str, body: GenerateResetLinkRequest, requ
         "token": token,
         "userId": user_id,
         "createdBy": auth_user.user_id,
-        "leagueId": body.leagueId,
+        "leagueSeasonId": body.leagueSeasonId,
         "expiresAt": expires_at,
         "usedAt": None,
         "isActive": True,
@@ -81,7 +84,7 @@ async def generate_reset_link(user_id: str, body: GenerateResetLinkRequest, requ
             "action": "admin_generate_password_reset_link",
             "userId": auth_user.user_id,
             "targetUserId": user_id,
-            "leagueId": body.leagueId,
+            "leagueSeasonId": body.leagueSeasonId,
             "tokenId": str(result.inserted_id),
             "context": {
                 "adminEmail": auth_user.email,
@@ -116,9 +119,21 @@ async def validate_reset_token(token: str) -> dict:
     if not user:
         raise ApiError("User not found", 404)
 
-    league = await db[Collections.LEAGUES].find_one({"_id": ObjectId(reset_token["leagueId"])})
-    if not league:
+    # SUR-010: leagueSeasonId is in league_seasons; get name via parent join.
+    league_season_docs = await db[Collections.LEAGUE_SEASONS].aggregate([
+        {"$match": {"_id": ObjectId(reset_token["leagueSeasonId"])}},
+        {"$lookup": {
+            "from": Collections.LEAGUES,
+            "localField": "leagueId",
+            "foreignField": "_id",
+            "as": "parent",
+        }},
+        {"$unwind": "$parent"},
+        {"$limit": 1},
+    ]).to_list(1)
+    if not league_season_docs:
         raise ApiError("League not found", 404)
+    league_doc = league_season_docs[0]
 
     return ok({
         "token": {
@@ -135,7 +150,7 @@ async def validate_reset_token(token: str) -> dict:
         # recorded once in CR-105-PHASE1-REPORT.md/Addendum 2 as a confirmed
         # drift rather than something to silently patch per-callsite.
         "user": {"id": str(user["_id"]), "username": user.get("username"), "email": user["email"]},
-        "league": {"id": str(league["_id"]), "name": league["name"]},
+        "league": {"id": str(league_doc["_id"]), "name": league_doc["parent"]["name"]},
     })
 
 
@@ -179,7 +194,7 @@ async def complete_reset(token: str, body: CompletePasswordResetRequestBody) -> 
             "action": "user_password_reset_completed",
             "userId": reset_token["userId"],
             "tokenId": str(reset_token["_id"]),
-            "leagueId": reset_token["leagueId"],
+            "leagueSeasonId": reset_token["leagueSeasonId"],
             "context": {
                 "userEmail": user["email"],
                 "resetTokenCreatedBy": reset_token["createdBy"],
