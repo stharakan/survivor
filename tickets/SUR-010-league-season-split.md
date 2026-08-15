@@ -186,6 +186,77 @@ them out for a quick sanity check before/during implementation:
   cluster tier if this matters (Atlas M-tier free/shared clusters are the
   likely case here given the connection string).
 
+## Implementation Notes
+
+Decisions made during implementation (2026-08-14), not in the original spec:
+
+- **No `leagues_pre_migration_backup` collection.** The ticket proposed keeping a
+  same-DB copy of old `leagues` docs for rollback. Skipped — the rollback mode
+  reverses the `$rename`s and drops the Phase 1 new docs directly; an external
+  `mongodump` is the right disaster-recovery tool, not a shadow collection.
+- **`audit_logs` IS included in Phase 2 rename** (`leagueId` → `leagueSeasonId`).
+  Full 100% field rename — no collections left behind. Existing `audit_logs` docs
+  are append-only event records (member removal, admin privilege changes) with a
+  `leagueId` field; the script renames them the same as the other four collections.
+- **`scripts/init-db.ts` and `scripts/create-epl-league.ts` deleted on this branch.**
+  Both are stale after the migration (they construct old-shape League docs directly
+  via `lib/db.ts`). Neither is useful for SUR-010 dev since we work with the existing
+  dev DB, not a fresh seed. Replaced conceptually by `scripts/create-league-season.ts`
+  (Stage D).
+- **Demo League deleted in Phase 0** as originally spec'd — confirmed there is no need
+  to keep a dev-only league object around since we have a dedicated dev DB
+  (`survivor-league-dev`) that holds the real migration target.
+- **Dev DB guard string**: `survivor-league-dev` — script refuses to run against any
+  other DB name without `--allow-prod`.
+
+### Current dev DB state (confirmed 2026-08-14)
+
+The dev DB (`survivor-league-dev`) was already fully migrated through Stage D
+before this branch's code was written. A fresh agent continuing this work should
+**develop Stages B–E directly against the already-migrated dev DB** — do not
+attempt to re-run the migration script against dev.
+
+Confirmed shape via direct DB inspection:
+
+```
+leagues (1 document):
+  _id: 6a7da1bb8740cae179321ac5
+  name: "Tharakan Bros Survivor League", sportsLeague: "EPL"
+  currentSeasonId: 6a7e6691f49ecca7fa94e156   (→ 2026/2027 season)
+  pastSeasonIds: ["689ac6df431134389631c9c8"] (→ 2025/2026 season)
+  createdBy, createdAt, description, logo — no season/memberCount fields
+
+league_seasons (2 documents):
+  689ac6df...  season="2025/2026", isActive=false, memberCount=57,
+               current_game_week=26, current_pick_week=27, last_completed_week=26
+               leagueId → 6a7da1bb... (parent League)
+  6a7e6691...  season="2026/2027", isActive=true,  memberCount=56,
+               week counters=null, createdAt=2026-08-14
+               leagueId → 6a7da1bb... (same parent League)
+
+league_memberships: 113 docs, all using leagueSeasonId (not leagueId)
+picks:              1064 docs, all using leagueSeasonId
+league_invitations: 4 docs, all using leagueSeasonId
+audit_logs:         0 docs with leagueId (none written yet)
+```
+
+Note: `hideScoreboard` is `null` on the 2025/2026 season doc (not `false`).
+Code reading this field should coerce `null → false` (already done via `?? false`
+in the migration script; replicate in backend shape functions).
+
+### Stage completion status
+
+- **Stage A**: `scripts/migrate-league-to-leagueseason.ts` written and dry-run
+  verified. Script is NOT run against dev (already migrated). Verification against
+  a disposable Docker Mongo is deferred to Stage E.
+- **Stage B**: Not started. Start here.
+- **Stage C**: Not started.
+- **Stage D**: Dev DB already has the 2026/2027 season created with 56 members
+  carried over. The `create-league-season.ts` ops script and db function still
+  need to be written (so Stage D exists as code, not just as DB state).
+- **Stage E**: Not started.
+- **Stage F**: Not started (blocked on B–E).
+
 ## Stage A — Schema & migration script (dev)
 
 New TS ops script, `scripts/migrate-league-to-leagueseason.ts` (same style as
@@ -233,11 +304,11 @@ multi-season grouping to resolve in current data):
 3. Insert a new `leagues` doc (fresh `ObjectId`) with the captured fields plus
    `currentSeasonId: <the league_seasons doc's _id>`, `pastSeasonIds: []`.
 4. Backfill `league_seasons.leagueId` with the new parent's `_id`.
-5. Drop the original `leagues` collection **only after** verifying `(4)`
-   succeeded for every doc and doc counts reconcile; keep a
-   `leagues_pre_migration_backup` copy (rename-or-recopy, operator's choice via
-   flag) rather than an unconditional drop, so rollback doesn't depend on
-   external `mongodump` state.
+5. Drop the old-style `leagues` docs (those with a `season` field) **only after**
+   verifying `(4)` succeeded for every doc and doc counts reconcile. No backup
+   collection is kept — rollback mode reverses `$rename`s and drops Phase 1 docs
+   directly; external `mongodump` is the disaster-recovery tool (see Implementation
+   Notes).
 
 ### Phase 2 — field rename across dependent collections
 
