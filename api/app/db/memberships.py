@@ -1,22 +1,46 @@
 """Port of lib/db.ts League membership operations (Rank 3 -- CR-105-FINDINGS.md
-Table 1, 3.1-3.7)."""
+Table 1, 3.1-3.7).
+
+SUR-010: renamed leagueId→leagueSeasonId in all DB queries/inserts; aggregation
+pipeline now does a two-hop join (league_memberships → league_seasons → leagues)
+to assemble the flat League shape. memberCount increments/decrements go to
+league_seasons, not leagues.
+"""
 from datetime import datetime, timezone
 from typing import Optional
 
 from bson import ObjectId
 
-from app.db.leagues import get_league_by_id
+from app.db.league_seasons import get_league_season_by_id
 from app.db.mongodb import get_database, Collections
-from app.db._shape import league_from_doc, to_iso
+from app.db._shape import flatten_league_season, to_iso
 from app.models.league import LeagueMembership, LeagueMembershipWithUserDetails, UserSummary
 
 _UNSET = object()
+
+# Two-hop join: league_memberships → league_seasons → leagues parent.
+_SEASON_JOIN = [
+    {"$lookup": {
+        "from": Collections.LEAGUE_SEASONS,
+        "localField": "leagueSeasonId",
+        "foreignField": "_id",
+        "as": "league_season",
+    }},
+    {"$unwind": "$league_season"},
+    {"$lookup": {
+        "from": Collections.LEAGUES,
+        "localField": "league_season.leagueId",
+        "foreignField": "_id",
+        "as": "league_parent",
+    }},
+    {"$unwind": "$league_parent"},
+]
 
 
 def _membership_from_agg(doc: dict) -> LeagueMembership:
     return LeagueMembership(
         id=str(doc["_id"]),
-        league=league_from_doc(doc["league"]),
+        league=flatten_league_season(doc["league_season"], doc["league_parent"]),
         user=str(doc["userId"]),
         teamName=doc["teamName"],
         points=doc["points"],
@@ -33,12 +57,12 @@ def _membership_from_agg(doc: dict) -> LeagueMembership:
 
 
 async def create_league_membership(
-    league_id: str, user_id: str, team_name: str, is_admin: bool = False
+    league_season_id: str, user_id: str, team_name: str, is_admin: bool = False
 ) -> LeagueMembership:
     """Port of lib/db.ts:294-338."""
     db = get_database()
     result = await db[Collections.LEAGUE_MEMBERSHIPS].insert_one({
-        "leagueId": ObjectId(league_id),
+        "leagueSeasonId": ObjectId(league_season_id),
         "userId": ObjectId(user_id),
         "teamName": team_name,
         "points": 0,
@@ -51,14 +75,13 @@ async def create_league_membership(
         "joinedAt": datetime.now(timezone.utc),
     })
 
-    await db[Collections.LEAGUES].update_one({"_id": ObjectId(league_id)}, {"$inc": {"memberCount": 1}})
+    await db[Collections.LEAGUE_SEASONS].update_one(
+        {"_id": ObjectId(league_season_id)}, {"$inc": {"memberCount": 1}}
+    )
 
-    league = await get_league_by_id(league_id)
+    league = await get_league_season_by_id(league_season_id)
     if league is None:
-        # Mirrors the TS original's blind `league!` non-null assertion -- if the
-        # league vanished between the $inc above and this read, that's a real
-        # data-integrity problem worth a loud failure, not a silent None.
-        raise ValueError("League not found immediately after membership creation")
+        raise ValueError("League season not found immediately after membership creation")
 
     return LeagueMembership(
         id=str(result.inserted_id),
@@ -81,42 +104,28 @@ async def get_user_league_memberships(user_id: str) -> list[LeagueMembership]:
     db = get_database()
     docs = await db[Collections.LEAGUE_MEMBERSHIPS].aggregate([
         {"$match": {"userId": ObjectId(user_id)}},
-        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
-        {"$unwind": "$league"},
+        *_SEASON_JOIN,
     ]).to_list(length=None)
     return [_membership_from_agg(doc) for doc in docs]
 
 
-async def get_league_members(league_id: str) -> list[LeagueMembership]:
+async def get_league_members(league_season_id: str) -> list[LeagueMembership]:
     """Port of lib/db.ts:389-436."""
     db = get_database()
     docs = await db[Collections.LEAGUE_MEMBERSHIPS].aggregate([
-        {"$match": {"leagueId": ObjectId(league_id)}},
-        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
-        {"$unwind": "$league"},
+        {"$match": {"leagueSeasonId": ObjectId(league_season_id)}},
+        *_SEASON_JOIN,
     ]).to_list(length=None)
     return [_membership_from_agg(doc) for doc in docs]
 
 
-async def get_league_members_with_user_data(league_id: str) -> list[LeagueMembershipWithUserDetails]:
-    """Port of lib/db.ts:438-497.
-
-    NOTE: the TS original's inline `league` sub-shape here (lib/db.ts:466-478)
-    omits `hideScoreboard`/`current_game_week`/`current_pick_week`/
-    `last_completed_week` -- every OTHER League-returning function in lib/db.ts
-    includes them. That's an existing inconsistency in the TS source, not a
-    deliberate difference this port preserves: it reuses the same shared
-    `league_from_doc` helper as everywhere else, so the League here is always
-    fully populated. No caller was relying on those fields being absent
-    specifically from this one call site (they'd just read as `undefined` in TS
-    vs. `None`/`False` here).
-    """
+async def get_league_members_with_user_data(league_season_id: str) -> list[LeagueMembershipWithUserDetails]:
+    """Port of lib/db.ts:438-497."""
     db = get_database()
     docs = await db[Collections.LEAGUE_MEMBERSHIPS].aggregate([
-        {"$match": {"leagueId": ObjectId(league_id)}},
-        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
+        {"$match": {"leagueSeasonId": ObjectId(league_season_id)}},
+        *_SEASON_JOIN,
         {"$lookup": {"from": Collections.USERS, "localField": "userId", "foreignField": "_id", "as": "userDetails"}},
-        {"$unwind": "$league"},
         {"$unwind": "$userDetails"},
     ]).to_list(length=None)
 
@@ -131,38 +140,26 @@ async def get_league_members_with_user_data(league_id: str) -> list[LeagueMember
     return result
 
 
-async def get_league_member(league_id: str, member_id: str) -> Optional[LeagueMembership]:
+async def get_league_member(league_season_id: str, member_id: str) -> Optional[LeagueMembership]:
     """Port of lib/db.ts:499-556."""
     db = get_database()
     docs = await db[Collections.LEAGUE_MEMBERSHIPS].aggregate([
-        {"$match": {"_id": ObjectId(member_id), "leagueId": ObjectId(league_id)}},
-        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
-        {"$unwind": "$league"},
+        {"$match": {"_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id)}},
+        *_SEASON_JOIN,
     ]).to_list(length=1)
     if not docs:
         return None
     return _membership_from_agg(docs[0])
 
 
-async def get_membership_for_user(league_id: str, user_id: str) -> Optional[LeagueMembership]:
+async def get_membership_for_user(league_season_id: str, user_id: str) -> Optional[LeagueMembership]:
     """NEW in Phase 2 -- port of lib/auth-utils.ts's private
-    `getUserLeagueMembership` helper (lib/auth-utils.ts:62-122), which the TS
-    app inlines its own raw aggregation + manual object-shaping for rather than
-    reusing lib/db.ts's `getLeagueMember` (that one looks up by membership
-    `_id`, not by `userId`+`leagueId`). Needed by Phase 2's authorization
-    context (`app/core/auth_deps.py::get_authorization_context`) -- the Python
-    equivalent of `verifyAuthToken`+`getAuthorizationContext`'s membership
-    lookup. Reuses the shared `_membership_from_agg`/`league_from_doc` shaping
-    instead of re-duplicating the TS original's second, slightly different
-    inline object literal (lib/auth-utils.ts:92-117) -- same underlying shape,
-    factored through the one helper already used everywhere else in this
-    module, not a behavior change.
-    """
+    `getUserLeagueMembership` helper. Needed by auth_deps.py's authorization
+    context. SUR-010: matches on leagueSeasonId."""
     db = get_database()
     docs = await db[Collections.LEAGUE_MEMBERSHIPS].aggregate([
-        {"$match": {"userId": ObjectId(user_id), "leagueId": ObjectId(league_id)}},
-        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
-        {"$unwind": "$league"},
+        {"$match": {"userId": ObjectId(user_id), "leagueSeasonId": ObjectId(league_season_id)}},
+        *_SEASON_JOIN,
         {"$limit": 1},
     ]).to_list(length=1)
     if not docs:
@@ -171,16 +168,14 @@ async def get_membership_for_user(league_id: str, user_id: str) -> Optional[Leag
 
 
 async def update_member_status(
-    league_id: str,
+    league_season_id: str,
     member_id: str,
     *,
     is_paid=_UNSET,
     is_admin=_UNSET,
     team_name=_UNSET,
 ) -> None:
-    """Port of lib/db.ts:558-599. Raises ValueError on the same validation
-    failures the TS throws on (empty/duplicate team name) -- callers (Phase 2
-    routes) should catch and translate to an HTTP 400, same as today."""
+    """Port of lib/db.ts:558-599."""
     db = get_database()
     update_doc: dict = {}
 
@@ -194,7 +189,7 @@ async def update_member_status(
             raise ValueError("Team name cannot be empty")
 
         existing = await db[Collections.LEAGUE_MEMBERSHIPS].find_one({
-            "leagueId": ObjectId(league_id),
+            "leagueSeasonId": ObjectId(league_season_id),
             "teamName": trimmed,
             "_id": {"$ne": ObjectId(member_id)},
         })
@@ -204,17 +199,16 @@ async def update_member_status(
         update_doc["teamName"] = trimmed
 
     await db[Collections.LEAGUE_MEMBERSHIPS].update_one(
-        {"_id": ObjectId(member_id), "leagueId": ObjectId(league_id)},
+        {"_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id)},
         {"$set": update_doc},
     )
 
 
-async def remove_member_from_league(league_id: str, member_id: str, removed_by: str) -> None:
-    """Port of lib/db.ts:601-643. Soft-deletes (marks inactive) rather than
-    actually deleting, matching the TS original."""
+async def remove_member_from_league(league_season_id: str, member_id: str, removed_by: str) -> None:
+    """Port of lib/db.ts:601-643. Soft-deletes (marks inactive)."""
     db = get_database()
     existing_member = await db[Collections.LEAGUE_MEMBERSHIPS].find_one({
-        "_id": ObjectId(member_id), "leagueId": ObjectId(league_id),
+        "_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id),
     })
     if not existing_member:
         raise ValueError("Member not found")
@@ -222,7 +216,7 @@ async def remove_member_from_league(league_id: str, member_id: str, removed_by: 
         raise ValueError("Member is already inactive")
 
     await db[Collections.LEAGUE_MEMBERSHIPS].update_one(
-        {"_id": ObjectId(member_id), "leagueId": ObjectId(league_id)},
+        {"_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id)},
         {"$set": {
             "isActive": False,
             "status": "removed",
@@ -231,4 +225,6 @@ async def remove_member_from_league(league_id: str, member_id: str, removed_by: 
         }},
     )
 
-    await db[Collections.LEAGUES].update_one({"_id": ObjectId(league_id)}, {"$inc": {"memberCount": -1}})
+    await db[Collections.LEAGUE_SEASONS].update_one(
+        {"_id": ObjectId(league_season_id)}, {"$inc": {"memberCount": -1}}
+    )

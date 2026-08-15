@@ -3,6 +3,9 @@
 Next, write moves" under the pilot to full MOVE-TO-PYTHON once the pilot scope was
 dropped -- there's no reason to keep the read half in a deprecated backend under
 the full-migration decision.
+
+SUR-010: all LEAGUES queries for week tracking replaced with LEAGUE_SEASONS;
+picks $match uses leagueSeasonId instead of leagueId.
 """
 from typing import Optional
 
@@ -28,15 +31,15 @@ def _rank_players(players: list[Player]) -> list[Player]:
     return [p.model_copy(update={"rank": i + 1}) for i, p in enumerate(ordered)]
 
 
-async def get_scoreboard_with_picks(league_id: str) -> dict:
+async def get_scoreboard_with_picks(league_season_id: str) -> dict:
     """Port of lib/db.ts:1195-1300. Returns `{players: list[Player],
     currentGameWeek: int | None}`."""
     db = get_database()
 
-    league = await db[Collections.LEAGUES].find_one({"_id": ObjectId(league_id)})
-    current_game_week = (league or {}).get("current_game_week")
+    season_doc = await db[Collections.LEAGUE_SEASONS].find_one({"_id": ObjectId(league_season_id)})
+    current_game_week = (season_doc or {}).get("current_game_week")
 
-    members = await get_league_members_with_user_data(league_id)
+    members = await get_league_members_with_user_data(league_season_id)
 
     if not current_game_week:
         players = _rank_players([_base_player(m) for m in members if m.status == "active"])
@@ -47,7 +50,7 @@ async def get_scoreboard_with_picks(league_id: str) -> dict:
     weekly_picks = await db[Collections.PICKS].aggregate([
         {"$match": {
             "userId": {"$in": member_user_ids},
-            "leagueId": ObjectId(league_id),
+            "leagueSeasonId": ObjectId(league_season_id),
             "week": current_game_week,
         }},
         {"$lookup": {"from": Collections.TEAMS, "localField": "teamId", "foreignField": "id", "as": "team"}},
@@ -63,19 +66,19 @@ async def get_scoreboard_with_picks(league_id: str) -> dict:
     return {"players": players, "currentGameWeek": current_game_week}
 
 
-async def get_league_results(league_id: str) -> ResultsData:
+async def get_league_results(league_season_id: str) -> ResultsData:
     """Port of lib/db.ts:1595-1706."""
     db = get_database()
 
-    league = await db[Collections.LEAGUES].find_one({"_id": ObjectId(league_id)})
-    last_completed_week = (league or {}).get("last_completed_week") or 0
+    season_doc = await db[Collections.LEAGUE_SEASONS].find_one({"_id": ObjectId(league_season_id)})
+    last_completed_week = (season_doc or {}).get("last_completed_week") or 0
 
     if last_completed_week == 0:
         return ResultsData(users=[], completedWeeks=[])
 
     completed_weeks = list(range(1, last_completed_week + 1))
 
-    members = await get_league_members_with_user_data(league_id)
+    members = await get_league_members_with_user_data(league_season_id)
     active_members = [m for m in members if m.status == "active"]
 
     if not active_members:
@@ -86,7 +89,7 @@ async def get_league_results(league_id: str) -> ResultsData:
     all_picks = await db[Collections.PICKS].aggregate([
         {"$match": {
             "userId": {"$in": member_user_ids},
-            "leagueId": ObjectId(league_id),
+            "leagueSeasonId": ObjectId(league_season_id),
             "week": {"$in": completed_weeks},
         }},
         {"$lookup": {"from": Collections.TEAMS, "localField": "teamId", "foreignField": "id", "as": "team"}},
@@ -118,17 +121,17 @@ async def get_league_results(league_id: str) -> ResultsData:
     return ResultsData(users=users, completedWeeks=completed_weeks)
 
 
-async def get_season_summary(league_id: str) -> SeasonSummary:
+async def get_season_summary(league_season_id: str) -> SeasonSummary:
     """Port of lib/db.ts:1709-1888."""
     db = get_database()
 
-    league = await db[Collections.LEAGUES].find_one({"_id": ObjectId(league_id)})
-    if not league:
-        raise ValueError("League not found")
+    season_doc = await db[Collections.LEAGUE_SEASONS].find_one({"_id": ObjectId(league_season_id)})
+    if not season_doc:
+        raise ValueError("League season not found")
 
-    last_completed_week = league.get("last_completed_week") or 0
+    last_completed_week = season_doc.get("last_completed_week") or 0
 
-    members = await get_league_members_with_user_data(league_id)
+    members = await get_league_members_with_user_data(league_season_id)
     active_members = [m for m in members if m.status == "active"]
 
     # League is ended if all active members have 2+ strikes.
@@ -140,7 +143,7 @@ async def get_season_summary(league_id: str) -> SeasonSummary:
     member_user_ids = [ObjectId(m.user) for m in active_members]
     all_picks = await db[Collections.PICKS].find({
         "userId": {"$in": member_user_ids},
-        "leagueId": ObjectId(league_id),
+        "leagueSeasonId": ObjectId(league_season_id),
         "week": {"$lte": last_completed_week},
     }).to_list(length=None)
 

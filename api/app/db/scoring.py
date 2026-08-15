@@ -100,20 +100,20 @@ async def calculate_scores_and_strikes() -> int:
         {"isActive": True, "status": "active"}
     ).to_list(length=None)
 
-    leagues = await db[Collections.LEAGUES].find(
+    league_seasons = await db[Collections.LEAGUE_SEASONS].find(
         {"isActive": True}, {"last_completed_week": 1}
     ).to_list(length=None)
-    league_week_map = {str(league["_id"]): league.get("last_completed_week") or 0 for league in leagues}
+    league_week_map = {str(ls["_id"]): ls.get("last_completed_week") or 0 for ls in league_seasons}
 
     _log(f"Found {len(memberships)} active league memberships to process")
 
     for membership in memberships:
         try:
-            last_completed_week = league_week_map.get(str(membership["leagueId"]), 0)
+            last_completed_week = league_week_map.get(str(membership["leagueSeasonId"]), 0)
 
             picks = await db[Collections.PICKS].find({
                 "userId": membership["userId"],
-                "leagueId": membership["leagueId"],
+                "leagueSeasonId": membership["leagueSeasonId"],
                 "result": {"$ne": None},
                 "week": {"$lte": last_completed_week},
             }).to_list(length=None)

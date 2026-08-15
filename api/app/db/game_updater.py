@@ -292,11 +292,23 @@ async def _handle_postponement(db, db_game: dict) -> dict:
     (so existing picks are preserved but score/strike-neutral).
 
     Returns `{isPostponed, originalWeek, picksDeleted, picksMarkedDnp}` for
-    the caller to fold into the game document's `$set`."""
-    league = await db[Collections.LEAGUES].find_one({
-        "sportsLeague": db_game.get("sportsLeague"),
-        "season": db_game.get("season"),
-    })
+    the caller to fold into the game document's `$set`.
+
+    SUR-010: sportsLeague is on the parent leagues doc; query via
+    league_seasons + parent join to find the active season for this game."""
+    seasons = await db[Collections.LEAGUE_SEASONS].aggregate([
+        {"$match": {"season": db_game.get("season"), "isActive": True}},
+        {"$lookup": {
+            "from": Collections.LEAGUES,
+            "localField": "leagueId",
+            "foreignField": "_id",
+            "as": "parent",
+        }},
+        {"$unwind": "$parent"},
+        {"$match": {"parent.sportsLeague": db_game.get("sportsLeague")}},
+        {"$limit": 1},
+    ]).to_list(1)
+    league = seasons[0] if seasons else None
     gameweek_started = has_gameweek_started(league or {}, db_game["week"])
 
     picks_deleted = 0
@@ -464,21 +476,33 @@ async def _calculate_last_completed_week(sports_league: str, season: str) -> Opt
 
 
 async def _update_league_week_tracking() -> int:
-    """Port of lib/game-updater.ts:408-450."""
+    """Port of lib/game-updater.ts:408-450. SUR-010: queries league_seasons with
+    parent join instead of leagues; updates league_seasons week fields."""
     db = get_database()
     _log("Updating league week tracking...")
 
-    leagues = await db[Collections.LEAGUES].find({"isActive": True}).to_list(length=None)
-    leagues_updated = 0
+    seasons = await db[Collections.LEAGUE_SEASONS].aggregate([
+        {"$match": {"isActive": True}},
+        {"$lookup": {
+            "from": Collections.LEAGUES,
+            "localField": "leagueId",
+            "foreignField": "_id",
+            "as": "parent",
+        }},
+        {"$unwind": "$parent"},
+    ]).to_list(length=None)
+    seasons_updated = 0
 
-    for league in leagues:
+    for season in seasons:
         try:
-            current_game_week = await _calculate_current_game_week(league["sportsLeague"], league["season"])
-            current_pick_week = await _calculate_current_pick_week(league["sportsLeague"], league["season"])
-            last_completed_week = await _calculate_last_completed_week(league["sportsLeague"], league["season"])
+            sports_league = season["parent"]["sportsLeague"]
+            season_str = season["season"]
+            current_game_week = await _calculate_current_game_week(sports_league, season_str)
+            current_pick_week = await _calculate_current_pick_week(sports_league, season_str)
+            last_completed_week = await _calculate_last_completed_week(sports_league, season_str)
 
-            await db[Collections.LEAGUES].update_one(
-                {"_id": league["_id"]},
+            await db[Collections.LEAGUE_SEASONS].update_one(
+                {"_id": season["_id"]},
                 {"$set": {
                     "current_game_week": current_game_week,
                     "current_pick_week": current_pick_week,
@@ -486,16 +510,17 @@ async def _update_league_week_tracking() -> int:
                     "lastWeekUpdate": datetime.now(timezone.utc),
                 }},
             )
-            leagues_updated += 1
+            seasons_updated += 1
             _log(
-                f"Updated league {league['name']}: game_week={current_game_week}, "
-                f"pick_week={current_pick_week}, last_completed_week={last_completed_week}"
+                f"Updated season {season['parent']['name']} {season['season']}: "
+                f"game_week={current_game_week}, pick_week={current_pick_week}, "
+                f"last_completed_week={last_completed_week}"
             )
         except Exception as error:  # noqa: BLE001
-            _log(f"Error updating week tracking for league {league['name']}: {error}")
+            _log(f"Error updating week tracking for season {season.get('season')}: {error}")
 
-    _log(f"League week tracking completed: {leagues_updated} leagues updated")
-    return leagues_updated
+    _log(f"League week tracking completed: {seasons_updated} seasons updated")
+    return seasons_updated
 
 
 async def update_game_scores() -> dict:
@@ -590,7 +615,7 @@ async def update_game_scores() -> dict:
         _log(f"  • {games_moved_to_postponed} games moved to postponed status")
         _log(f"  • {total_picks_deleted} pick(s) deleted (postponed before gameweek start)")
         _log(f"  • {total_picks_marked_dnp} pick(s) marked DNP (postponed after gameweek start)")
-        _log(f"  • {leagues_updated} leagues updated with week tracking")
+        _log(f"  • {leagues_updated} league seasons updated with week tracking")
         _log(f"  • Total execution time: {execution_time} seconds")
         _log(f"  • Completed at: {end_time.isoformat()}")
 
