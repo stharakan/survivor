@@ -35,7 +35,7 @@ if (!apiKey) {
   process.exit(1)
 }
 
-const baseUrl = process.env.API_BASE_URL ?? 'http://localhost:8001'
+const baseUrl = (process.env.API_BASE_URL ?? 'http://localhost:8001').replace(/\/$/, '')
 
 async function run() {
   console.log(`Creating season "${season}" under league ${leagueId} ...`)
