@@ -77,7 +77,7 @@ class CreatePickRequest(BaseModel):
     means the acting user always comes from the verified JWT, never a
     client-supplied field. See routers/picks.py."""
 
-    leagueId: str
+    leagueSeasonId: str  # was leagueId
     gameId: int
     teamId: int
     week: int
@@ -87,7 +87,7 @@ class GenerateResetLinkRequest(BaseModel):
     """Port of the `{ leagueId }` body read at
     app/api/admin/users/[userId]/generate-reset-link/route.ts:33."""
 
-    leagueId: str
+    leagueSeasonId: str  # was leagueId
 
 
 class AcceptInvitationRequest(BaseModel):

@@ -37,6 +37,35 @@ class League(BaseModel):
     last_completed_week: Optional[int] = None
 
 
+class LeagueParent(BaseModel):
+    """Internal model for the `leagues` collection — year-agnostic group identity."""
+    id: str
+    name: str
+    description: str
+    sportsLeague: str
+    logo: Optional[str] = None
+    createdBy: str
+    createdAt: str
+    currentSeasonId: Optional[str] = None
+    pastSeasonIds: list[str] = []
+
+
+class LeagueSeason(BaseModel):
+    """Internal model for the `league_seasons` collection — one year of play."""
+    id: str
+    leagueId: str
+    season: str
+    isActive: bool
+    memberCount: int
+    isPublic: bool
+    requiresApproval: bool
+    hideScoreboard: bool
+    createdAt: str
+    current_game_week: Optional[int] = None
+    current_pick_week: Optional[int] = None
+    last_completed_week: Optional[int] = None
+
+
 class LeagueMembership(BaseModel):
     id: str
     league: League

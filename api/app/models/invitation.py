@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 class LeagueInvitation(BaseModel):
     id: str
-    leagueId: str
+    leagueSeasonId: str  # was leagueId
     token: str
     createdBy: str
     maxUses: Optional[int] = None
