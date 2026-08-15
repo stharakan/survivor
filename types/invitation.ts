@@ -1,6 +1,6 @@
 export type LeagueInvitation = {
   id: string
-  leagueId: string
+  leagueSeasonId: string
   token: string
   createdBy: string
   maxUses: number | null

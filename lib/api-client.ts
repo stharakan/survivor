@@ -104,14 +104,14 @@ export async function getUserLeagues(userId: string): Promise<LeagueMembership[]
 }
 
 export async function getLeagueMembers(leagueId: string): Promise<LeagueMembership[]> {
-  return apiRequest(`/leagues/${leagueId}/members`)
+  return apiRequest(`/league-seasons/${leagueId}/members`)
 }
 
 export async function getScoreboard(leagueId: string): Promise<{
   players: Player[]
   currentGameWeek: number | null
 }> {
-  return apiRequest(`/leagues/${leagueId}/scoreboard`)
+  return apiRequest(`/league-seasons/${leagueId}/scoreboard`)
 }
 
 export async function getLeagueResults(leagueId: string): Promise<{
@@ -126,7 +126,7 @@ export async function getLeagueResults(leagueId: string): Promise<{
   }>
   completedWeeks: number[]
 }> {
-  return apiRequest(`/leagues/${leagueId}/results`)
+  return apiRequest(`/league-seasons/${leagueId}/results`)
 }
 
 export async function getProfile(userId: string, leagueId: string): Promise<User> {
@@ -141,7 +141,7 @@ export async function updateUserProfile(userId: string, updates: { name?: string
 }
 
 export async function getLeagueMember(leagueId: string, memberId: string): Promise<LeagueMembership | null> {
-  return apiRequest(`/leagues/${leagueId}/members/${memberId}`)
+  return apiRequest(`/league-seasons/${leagueId}/members/${memberId}`)
 }
 
 export async function updateMemberStatus(
@@ -149,14 +149,14 @@ export async function updateMemberStatus(
   memberId: string,
   updates: { isPaid?: boolean; isAdmin?: boolean; teamName?: string },
 ): Promise<LeagueMembership> {
-  return apiRequest(`/leagues/${leagueId}/members/${memberId}`, {
+  return apiRequest(`/league-seasons/${leagueId}/members/${memberId}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
   })
 }
 
 export async function removeMemberFromLeague(leagueId: string, memberId: string): Promise<void> {
-  return apiRequest(`/leagues/${leagueId}/members/${memberId}`, {
+  return apiRequest(`/league-seasons/${leagueId}/members/${memberId}`, {
     method: 'DELETE',
   })
 }
@@ -173,40 +173,40 @@ export async function updateLeagueSettings(
     hideScoreboard?: boolean
   },
 ): Promise<League> {
-  return apiRequest(`/leagues/${leagueId}`, {
+  return apiRequest(`/league-seasons/${leagueId}`, {
     method: 'PATCH',
     body: JSON.stringify(updates),
   })
 }
 
 export async function getUserPicks(userId: string, leagueId: string): Promise<Pick[]> {
-  return apiRequest(`/picks?user_id=${userId}&league_id=${leagueId}`)
+  return apiRequest(`/picks?user_id=${userId}&league_season_id=${leagueId}`)
 }
 
 export async function getPicksRemaining(
   userId: string,
   leagueId: string,
 ): Promise<{ team: Team; remaining: number }[]> {
-  return apiRequest(`/picks/remaining?user_id=${userId}&league_id=${leagueId}`)
+  return apiRequest(`/picks/remaining?user_id=${userId}&league_season_id=${leagueId}`)
 }
 
 export async function getUpcomingGames(week: number, leagueId: string): Promise<Game[]> {
-  return apiRequest(`/games?week=${week}&league_id=${leagueId}`)
+  return apiRequest(`/games?week=${week}&league_season_id=${leagueId}`)
 }
 
 export async function getUpcomingGamesWithPicks(week: number, leagueId: string, userId: string): Promise<Game[]> {
-  return apiRequest(`/games?week=${week}&league_id=${leagueId}&user_id=${userId}`)
+  return apiRequest(`/games?week=${week}&league_season_id=${leagueId}&user_id=${userId}`)
 }
 
 export async function makePick(userId: string, gameId: number, teamId: number, leagueId: string, week?: number): Promise<Pick> {
   // If week is not provided, we need to find it by looking up the game
   let gameWeek = week
-  
+
   if (!gameWeek) {
     // Find the game to get its week - this is expensive but necessary
     for (let w = 1; w <= 38; w++) {
       try {
-        const weekGames = await apiRequest<Game[]>(`/games?week=${w}&league_id=${leagueId}`)
+        const weekGames = await apiRequest<Game[]>(`/games?week=${w}&league_season_id=${leagueId}`)
         const game = weekGames.find(g => g.id === gameId)
         if (game) {
           gameWeek = w
@@ -216,17 +216,17 @@ export async function makePick(userId: string, gameId: number, teamId: number, l
         // Continue searching other weeks
       }
     }
-    
+
     if (!gameWeek) {
       throw new Error('Could not find game to determine week')
     }
   }
-  
+
   return apiRequest('/picks', {
     method: 'POST',
     body: JSON.stringify({
       userId,
-      leagueId,
+      leagueSeasonId: leagueId,
       gameId,
       teamId,
       week: gameWeek,
@@ -240,11 +240,11 @@ export async function getPlayerProfile(playerId: string, leagueId: string): Prom
   // so there was nothing to call. Any active league member may look up any
   // other member's profile; picks are NOT included (self-only, see
   // getUserPicks) per CR-105-FINDINGS.md Addendum 2's privacy boundary.
-  return apiRequest(`/leagues/${leagueId}/players/${playerId}/profile`)
+  return apiRequest(`/league-seasons/${leagueId}/players/${playerId}/profile`)
 }
 
 export async function getSeasonSummary(leagueId: string): Promise<SeasonSummary> {
-  return apiRequest(`/leagues/${leagueId}/season-summary`)
+  return apiRequest(`/league-seasons/${leagueId}/season-summary`)
 }
 
 // Invitation API functions
@@ -253,14 +253,14 @@ export async function createLeagueInvitation(
   maxUses: number | null,
   expiresAt: string | null
 ): Promise<any> {
-  return apiRequest(`/leagues/${leagueId}/invitations`, {
+  return apiRequest(`/league-seasons/${leagueId}/invitations`, {
     method: 'POST',
     body: JSON.stringify({ maxUses, expiresAt }),
   })
 }
 
 export async function getLeagueInvitations(leagueId: string): Promise<any[]> {
-  return apiRequest(`/leagues/${leagueId}/invitations`)
+  return apiRequest(`/league-seasons/${leagueId}/invitations`)
 }
 
 export async function getInvitationByToken(token: string): Promise<any> {
@@ -287,7 +287,7 @@ export async function generatePasswordResetLink(
 ): Promise<{ resetLink: string; userEmail: string; expiresAt: string }> {
   return apiRequest(`/admin/users/${userId}/generate-reset-link`, {
     method: 'POST',
-    body: JSON.stringify({ leagueId }),
+    body: JSON.stringify({ leagueSeasonId: leagueId }),
   })
 }
 
