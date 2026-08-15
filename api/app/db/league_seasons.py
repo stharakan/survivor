@@ -4,6 +4,7 @@ Each LeagueSeason doc is a single year of play within a parent League. All
 season-facing queries join against `leagues` via `leagueId` and return the flat
 `League` shape the frontend already consumes.
 """
+from datetime import datetime, timezone
 from typing import Optional
 
 from bson import ObjectId
@@ -151,3 +152,85 @@ async def update_league_season_settings(
         )
 
     return await get_league_season_by_id(league_season_id)
+
+
+async def create_league_season(league_id: str, new_season: str) -> League:
+    """Create a new LeagueSeason under an existing parent League (SUR-010 Stage D).
+
+    Carries over active memberships: isAdmin preserved, isPaid reset to False.
+    Marks the outgoing season inactive and updates League.currentSeasonId +
+    pastSeasonIds.
+    """
+    db = get_database()
+    now = datetime.now(timezone.utc)
+
+    parent = await db[Collections.LEAGUES].find_one({"_id": ObjectId(league_id)})
+    if not parent:
+        raise ValueError(f"League {league_id} not found")
+
+    outgoing_season_id = parent.get("currentSeasonId")
+    outgoing_season = None
+    if outgoing_season_id:
+        outgoing_season = await db[Collections.LEAGUE_SEASONS].find_one(
+            {"_id": outgoing_season_id}
+        )
+
+    is_public = (outgoing_season or {}).get("isPublic", False)
+    requires_approval = (outgoing_season or {}).get("requiresApproval", True)
+    hide_scoreboard = (outgoing_season or {}).get("hideScoreboard") or False
+
+    season_result = await db[Collections.LEAGUE_SEASONS].insert_one({
+        "leagueId": ObjectId(league_id),
+        "season": new_season,
+        "isActive": True,
+        "isPublic": is_public,
+        "requiresApproval": requires_approval,
+        "hideScoreboard": hide_scoreboard,
+        "memberCount": 0,
+        "createdAt": now,
+        "current_game_week": None,
+        "current_pick_week": None,
+        "last_completed_week": None,
+    })
+    new_season_id = season_result.inserted_id
+
+    if outgoing_season_id:
+        await db[Collections.LEAGUE_SEASONS].update_one(
+            {"_id": outgoing_season_id}, {"$set": {"isActive": False}}
+        )
+
+    active_members = await db[Collections.LEAGUE_MEMBERSHIPS].find(
+        {"leagueSeasonId": outgoing_season_id, "status": "active"}
+    ).to_list(length=None) if outgoing_season_id else []
+
+    if active_members:
+        await db[Collections.LEAGUE_MEMBERSHIPS].insert_many([
+            {
+                "leagueSeasonId": new_season_id,
+                "userId": m["userId"],
+                "teamName": m["teamName"],
+                "isAdmin": m["isAdmin"],
+                "isPaid": False,
+                "points": 0,
+                "strikes": 0,
+                "lossStrikes": 0,
+                "missingPickStrikes": 0,
+                "rank": 0,
+                "isActive": True,
+                "status": "active",
+                "joinedAt": now,
+            }
+            for m in active_members
+        ])
+
+    member_count = len(active_members)
+    await db[Collections.LEAGUE_SEASONS].update_one(
+        {"_id": new_season_id}, {"$set": {"memberCount": member_count}}
+    )
+
+    update_op: dict = {"$set": {"currentSeasonId": new_season_id}}
+    if outgoing_season_id:
+        update_op["$push"] = {"pastSeasonIds": outgoing_season_id}
+    await db[Collections.LEAGUES].update_one({"_id": ObjectId(league_id)}, update_op)
+
+    return await get_league_season_by_id(str(new_season_id))

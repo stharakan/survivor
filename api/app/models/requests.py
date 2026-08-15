@@ -90,6 +90,13 @@ class GenerateResetLinkRequest(BaseModel):
     leagueSeasonId: str  # was leagueId
 
 
+class CreateLeagueSeasonRequest(BaseModel):
+    """Body for POST /api/admin/create-season (SUR-010 Stage D)."""
+
+    leagueId: str
+    newSeason: str = Field(min_length=1)
+
+
 class AcceptInvitationRequest(BaseModel):
     """Port of acceptInvitationSchema (lib/api-types.ts:78-80)."""
 
