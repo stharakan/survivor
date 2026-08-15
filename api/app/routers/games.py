@@ -24,14 +24,14 @@ router = APIRouter(prefix="/api/games", tags=["games"])
 
 
 @router.get("")
-async def list_games(week: int, league_id: str, request: Request, user_id: str | None = None) -> dict:
+async def list_games(week: int, league_season_id: str, request: Request, user_id: str | None = None) -> dict:
     """Port of app/api/games/route.ts:5-39."""
-    auth_user = await require_league_membership(request, league_id)
+    auth_user = await require_league_membership(request, league_season_id)
 
     if user_id:
         await require_self(auth_user, user_id, "Unauthorized: can only view your own picks embedded in games")
-        games = await get_games_by_week_with_picks(week, user_id, league_id)
+        games = await get_games_by_week_with_picks(week, user_id, league_season_id)
     else:
-        games = await get_games_by_week(week, league_id)
+        games = await get_games_by_week(week, league_season_id)
 
     return ok([g.model_dump() for g in games])

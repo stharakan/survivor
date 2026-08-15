@@ -13,7 +13,7 @@ from fastapi import APIRouter, Request
 from app.core.auth_deps import require_league_paid, require_self, verify_auth_token
 from app.core.responses import ApiError, ok
 from app.db.games import get_all_teams, get_game_time_info_by_id
-from app.db.leagues import get_league_by_id
+from app.db.league_seasons import get_league_season_by_id
 from app.db.picks import create_pick, get_user_pick_for_week, get_user_picks_by_league
 from app.models.requests import CreatePickRequest
 from app.utils.game_utils import are_picks_locked, can_change_existing_pick, can_pick_from_game, has_gameweek_started
@@ -21,19 +21,19 @@ from app.utils.game_utils import are_picks_locked, can_change_existing_pick, can
 router = APIRouter(prefix="/api/picks", tags=["picks"])
 
 
-def _require_valid_league_id(league_id: str) -> None:
-    if not ObjectId.is_valid(league_id):
+def _require_valid_league_season_id(league_season_id: str) -> None:
+    if not ObjectId.is_valid(league_season_id):
         raise ApiError("Invalid league ID format", 400)
 
 
 @router.get("")
-async def list_picks(user_id: str, league_id: str, request: Request) -> dict:
+async def list_picks(user_id: str, league_season_id: str, request: Request) -> dict:
     """Port of app/api/picks/route.ts:7-41 GET. FIXED per Addendum 2: self-only."""
     auth_user = await verify_auth_token(request)
     await require_self(auth_user, user_id, "Unauthorized: you can only view your own picks")
-    _require_valid_league_id(league_id)
+    _require_valid_league_season_id(league_season_id)
 
-    picks = await get_user_picks_by_league(user_id, league_id)
+    picks = await get_user_picks_by_league(user_id, league_season_id)
     return ok([p.model_dump() for p in picks])
 
 
@@ -59,16 +59,16 @@ async def create_pick_route(body: CreatePickRequest, request: Request) -> dict:
     admin has marked unpaid (`isPaid` on `LeagueMembership`) from submitting
     picks.
     """
-    _require_valid_league_id(body.leagueId)
+    _require_valid_league_season_id(body.leagueSeasonId)
 
-    auth_user = await require_league_paid(request, body.leagueId)
+    auth_user = await require_league_paid(request, body.leagueSeasonId)
     user_id = auth_user.user_id
 
-    league = await get_league_by_id(body.leagueId)
+    league = await get_league_season_by_id(body.leagueSeasonId)
     if not league:
         raise ApiError("League not found", 404)
 
-    existing_pick = await get_user_pick_for_week(user_id, body.leagueId, body.week)
+    existing_pick = await get_user_pick_for_week(user_id, body.leagueSeasonId, body.week)
 
     gameweek_started = has_gameweek_started(league.model_dump(), body.week)
     picks_locked = are_picks_locked(bool(existing_pick), gameweek_started)
@@ -98,7 +98,7 @@ async def create_pick_route(body: CreatePickRequest, request: Request) -> dict:
             raise ApiError("Pick failed because game has already started", 400)
 
     try:
-        pick = await create_pick(user_id, body.leagueId, body.gameId, body.teamId, body.week)
+        pick = await create_pick(user_id, body.leagueSeasonId, body.gameId, body.teamId, body.week)
     except ValueError as e:
         # Covers the new CR-106 AC7 team-reuse-limit check as well as the
         # pre-existing "Game or team not found" case -- both used to fall
@@ -110,13 +110,13 @@ async def create_pick_route(body: CreatePickRequest, request: Request) -> dict:
 
 
 @router.get("/remaining")
-async def picks_remaining(user_id: str, league_id: str, request: Request) -> dict:
+async def picks_remaining(user_id: str, league_season_id: str, request: Request) -> dict:
     """Port of app/api/picks/remaining/route.ts:6-47. FIXED per Addendum 2: self-only."""
     auth_user = await verify_auth_token(request)
     await require_self(auth_user, user_id, "Unauthorized: you can only view your own picks remaining")
 
     teams = await get_all_teams()
-    user_picks = await get_user_picks_by_league(user_id, league_id)
+    user_picks = await get_user_picks_by_league(user_id, league_season_id)
 
     picks_remaining_data = []
     for team in teams:
