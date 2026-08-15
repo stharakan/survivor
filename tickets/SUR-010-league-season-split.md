@@ -216,61 +216,86 @@ Decisions made during implementation (2026-08-14), not in the original spec:
   (old-style docs only).
 - **Dev DB guard string**: `survivor-league-dev` — script refuses to run against any
   other DB name without `--allow-prod`.
+- **Stage C bug found and fixed** (2026-08-15). `app/admin/page.tsx` had two direct
+  `fetch` calls to `/api/leagues/${id}/invitations` (GET and POST) that were not
+  updated during the Stage C mechanical rename. Fixed to `/api/league-seasons/${id}/invitations`.
+  Would have broken the admin Invitations tab entirely.
+- **`next.config.mjs` updated for local dev proxy** (2026-08-15). `output: 'export'`
+  only applies in production builds now; dev mode uses a normal Next.js server with a
+  `rewrites` rule proxying `/api/*` → `http://localhost:8001/api/*`. Without this,
+  `npm run dev` returned 404 for all API calls (no route handlers exist in Next.js
+  after CR-106).
+- **`api/app/db/indexes.py` is NOT wired into startup** — it's a standalone one-time
+  script. The unique `{leagueId, season}` index on `league_seasons` exists on dev
+  because it was created during the manual dev migration, but must be run explicitly
+  on prod before or after the Stage F data migration:
+  `cd api && uv run --project .. python -m app.db.indexes`
+  Add this to the Stage F checklist. (Note: `uv run --project ..`, not bare `python`.)
+- **`create_league_season` duplicate-season behavior** (2026-08-15): running the
+  ops script twice with the same season string correctly fails — the unique index
+  prevents insertion and the route returns a generic 500 (MongoDB `DuplicateKeyError`
+  is unhandled at the route layer). Fail-loud behavior is acceptable for this
+  admin-only ops path; no data corruption is possible.
 
-### Current dev DB state (confirmed 2026-08-14)
+### Current dev DB state (confirmed 2026-08-15)
 
-The dev DB (`survivor-league-dev`) was already fully migrated through Stage D
-before this branch's code was written. A fresh agent continuing this work should
-**develop Stages B–E directly against the already-migrated dev DB** — do not
-attempt to re-run the migration script against dev.
-
-Confirmed shape via direct DB inspection:
+Dev DB was re-cloned from prod (old-shape), fully re-migrated, and the 2026/2027
+season re-created via `create-league-season.ts` — confirming the full Stage A→D
+pipeline end-to-end on a fresh dataset. New League `_id` assigned during this run.
 
 ```
 leagues (1 document):
-  _id: 6a7da1bb8740cae179321ac5
+  _id: 6a808a258ef5ac86e194fb86
   name: "Tharakan Bros Survivor League", sportsLeague: "EPL"
-  currentSeasonId: 6a7e6691f49ecca7fa94e156   (→ 2026/2027 season)
+  currentSeasonId: 6a808a591aa17459848e3350   (→ 2026/2027 season)
   pastSeasonIds: ["689ac6df431134389631c9c8"] (→ 2025/2026 season)
-  createdBy, createdAt, description, logo — no season/memberCount fields
 
 league_seasons (2 documents):
   689ac6df...  season="2025/2026", isActive=false, memberCount=57,
-               current_game_week=26, current_pick_week=27, last_completed_week=26
-               leagueId → 6a7da1bb... (parent League)
-  6a7e6691...  season="2026/2027", isActive=true,  memberCount=56,
-               week counters=null, createdAt=2026-08-14
-               leagueId → 6a7da1bb... (same parent League)
+               current_game_week=31, current_pick_week=31, last_completed_week=30
+               leagueId → 6a808a25... (parent League)
+  6a808a59...  season="2026/2027", isActive=true, memberCount=56,
+               week counters=null, createdAt=2026-08-15
+               leagueId → 6a808a25... (same parent League)
 
-league_memberships: 113 docs, all using leagueSeasonId (not leagueId)
-picks:              1064 docs, all using leagueSeasonId
+league_memberships: 113 docs, all using leagueSeasonId
+picks:              1070 docs, all using leagueSeasonId
 league_invitations: 4 docs, all using leagueSeasonId
-audit_logs:         0 docs with leagueId (none written yet)
+audit_logs:         0 docs with leagueId
 ```
 
-Note: `hideScoreboard` is `null` on the 2025/2026 season doc (not `false`).
-Code reading this field should coerce `null → false` (already done via `?? false`
-in the migration script; replicate in backend shape functions).
+No games exist for "2026/2027" — expected, EPL 2026/2027 fixtures not yet imported.
+The make-picks page shows an empty game list for the active season; this is correct
+behavior. 2025/2026 picks/results/scoreboard data is intact and queryable by season ID.
+
+Migration script confirmed idempotent: second `--execute` run skipped all phases
+and passed Phase 3 verification with no changes.
 
 ### Stage completion status
 
-- **Stage A**: Done. `scripts/migrate-league-to-leagueseason.ts` written, idempotency
-  bug fixed (Phase 1 guard now checks for old-style docs with `season` field, not
-  total `leagues` count). Script NOT re-run against dev (already migrated).
+- **Stage A**: Done. Migration script written, idempotency confirmed by running
+  `--execute` twice against a fresh prod-copy clone on 2026-08-15. All Phase 3
+  checks pass on both runs.
 - **Stage B**: Done. All models, DB modules, routers, auth_deps.py updated.
-- **Stage C**: Done (mechanical renames). Manual click-through not yet confirmed —
-  required before Stage F.
+- **Stage C**: Done. Mechanical renames complete + manual click-through confirmed
+  2026-08-15 (login → league select → make-picks → scoreboard → results →
+  admin members → admin invitations). Invitation tab bug found and fixed.
 - **Stage D**: Done. `create_league_season()` db function, `create-league-season.ts`
-  ops script, and `POST /api/admin/create-season` route exist. Dev DB has the
-  2026/2027 season (56 members), created before the ops script was written — ops
-  script has not been run in its final form to confirm end-to-end.
+  ops script, and `POST /api/admin/create-season` route confirmed end-to-end
+  2026-08-15: 56 members carried over, `isAdmin` preserved, `isPaid` reset,
+  `League.currentSeasonId`/`pastSeasonIds` correct. Second run correctly rejected.
 - **Stage E**: Done. All tests green (68/68).
   - `test_game_updater_live_mongo.py` updated ✅
   - `test_live_mongo_smoke.py` updated ✅
   - `test_league_seasons.py` added (carryover logic + old season queryable) ✅
   - `test_migration_script.py` added (execute/dry-run/idempotent against Docker Mongo) ✅
   - `lib/__tests__/scoring.test.ts` moot (CR-108 deleted it) ✅
-- **Stage F**: Not started (blocked on C manual walkthrough + D ops script verification).
+- **Stage F**: Done (2026-08-15).
+  - `mongodump-backup-20260815/` snapshot taken before execute.
+  - Dry-run reviewed: 1 real league (57 members, 1070 picks), Demo League found with 3 members/6 picks to delete.
+  - `--execute` run: Demo League deleted, `Tharakan Bros Survivor League` migrated to `league_seasons` (id `689ac6df...`) + new parent `leagues` doc (id `6a80955a...`). 57 memberships, 1070 picks, 4 invitations, 19 audit_logs renamed `leagueId` → `leagueSeasonId`. Phase 3: all checks passed.
+  - Indexes created on prod: `league_seasons_leagueId_season_unique`, `memberships_leagueSeasonId_userId_unique`, `invitations_leagueSeasonId_isActive`.
+  - EPL 2026/2027 season created on prod after deploying new code to Heroku.
 
 ## Stage A — Schema & migration script (dev)
 
