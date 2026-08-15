@@ -73,7 +73,7 @@ async def test_user_crud_round_trip():
 @pytest.mark.asyncio
 async def test_league_and_membership_round_trip():
     from app.db.auth import create_user
-    from app.db.leagues import get_league_by_id
+    from app.db.league_seasons import get_league_season_by_id
     from app.db.leagues import create_league
     from app.db.memberships import get_membership_for_user, create_league_membership
 
@@ -86,7 +86,8 @@ async def test_league_and_membership_round_trip():
     assert isinstance(league.id, str)
     assert isinstance(league.createdBy, str)
 
-    fetched = await get_league_by_id(league.id)
+    # league.id is now a LeagueSeason._id (SUR-010)
+    fetched = await get_league_season_by_id(league.id)
     assert fetched is not None and fetched.name == "Live Smoke League"
 
     membership = await create_league_membership(league.id, owner.id, "Owner Team", is_admin=True)
@@ -181,7 +182,8 @@ async def test_removed_member_status_does_not_break_reads():
     assert kept_user.id in scoreboard_ids
 
     # get_league_results only returns data once last_completed_week > 0.
-    await get_database()[Collections.LEAGUES].update_one(
+    # league.id is a LeagueSeason._id (SUR-010) so update league_seasons.
+    await get_database()[Collections.LEAGUE_SEASONS].update_one(
         {"_id": ObjectId(league.id)}, {"$set": {"last_completed_week": 1}},
     )
     results = await get_league_results(league.id)

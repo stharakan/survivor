@@ -4,9 +4,7 @@ The TS original (lib/db.ts) repeats this exact object-literal shaping inline at
 every call site (getUserPicksByLeague, getUserPickForWeek, getGamesByWeekWithPicks,
 createPick, getLeagueById, getAllLeagues, getAvailableLeagues, ...) rather than
 factoring it out. This port factors it into one place -- the underlying shape is
-unchanged, this is a hygiene improvement, not a behavior change, EXCEPT where noted
-inline (see memberships.py's use of league_from_doc for the one call site that was
-inconsistent in the TS source).
+unchanged, this is a hygiene improvement, not a behavior change.
 """
 from datetime import datetime
 from typing import Optional
@@ -115,22 +113,3 @@ def league_season_from_doc(doc: dict) -> LeagueSeason:
     )
 
 
-def league_from_doc(doc: dict) -> League:
-    return League(
-        id=str(doc["_id"]),
-        name=doc["name"],
-        description=doc["description"],
-        sportsLeague=doc["sportsLeague"],
-        logo=doc.get("logo"),
-        season=doc["season"],
-        isPublic=doc["isPublic"],
-        requiresApproval=doc["requiresApproval"],
-        hideScoreboard=doc.get("hideScoreboard", False),
-        createdBy=str(doc["createdBy"]),
-        isActive=doc["isActive"],
-        memberCount=doc["memberCount"],
-        createdAt=to_iso(doc["createdAt"]),
-        current_game_week=doc.get("current_game_week"),
-        current_pick_week=doc.get("current_pick_week"),
-        last_completed_week=doc.get("last_completed_week"),
-    )
