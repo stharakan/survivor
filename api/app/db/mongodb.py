@@ -42,6 +42,7 @@ class Collections:
 
     USERS = "users"
     LEAGUES = "leagues"
+    LEAGUE_SEASONS = "league_seasons"
     LEAGUE_MEMBERSHIPS = "league_memberships"
     TEAMS = "teams"
     GAMES = "games"

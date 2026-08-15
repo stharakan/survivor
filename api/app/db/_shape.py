@@ -4,15 +4,13 @@ The TS original (lib/db.ts) repeats this exact object-literal shaping inline at
 every call site (getUserPicksByLeague, getUserPickForWeek, getGamesByWeekWithPicks,
 createPick, getLeagueById, getAllLeagues, getAvailableLeagues, ...) rather than
 factoring it out. This port factors it into one place -- the underlying shape is
-unchanged, this is a hygiene improvement, not a behavior change, EXCEPT where noted
-inline (see memberships.py's use of league_from_doc for the one call site that was
-inconsistent in the TS source).
+unchanged, this is a hygiene improvement, not a behavior change.
 """
 from datetime import datetime
 from typing import Optional
 
 from app.models.game import Game, GameUserPick
-from app.models.league import League
+from app.models.league import League, LeagueParent, LeagueSeason
 from app.models.team import Team
 
 
@@ -62,22 +60,56 @@ def game_from_doc(doc: dict, *, user_pick: Optional[GameUserPick] = None) -> Gam
     )
 
 
-def league_from_doc(doc: dict) -> League:
+def flatten_league_season(season_doc: dict, parent_doc: dict) -> League:
+    """Produce the flat frontend-facing League from a league_seasons doc + leagues parent doc."""
     return League(
+        id=str(season_doc["_id"]),
+        name=parent_doc["name"],
+        description=parent_doc["description"],
+        sportsLeague=parent_doc["sportsLeague"],
+        logo=parent_doc.get("logo"),
+        season=season_doc["season"],
+        isPublic=season_doc["isPublic"],
+        requiresApproval=season_doc["requiresApproval"],
+        hideScoreboard=season_doc.get("hideScoreboard") or False,
+        createdBy=str(parent_doc["createdBy"]),
+        isActive=season_doc["isActive"],
+        memberCount=season_doc["memberCount"],
+        createdAt=to_iso(season_doc["createdAt"]),
+        current_game_week=season_doc.get("current_game_week"),
+        current_pick_week=season_doc.get("current_pick_week"),
+        last_completed_week=season_doc.get("last_completed_week"),
+    )
+
+
+def league_parent_from_doc(doc: dict) -> LeagueParent:
+    return LeagueParent(
         id=str(doc["_id"]),
         name=doc["name"],
         description=doc["description"],
         sportsLeague=doc["sportsLeague"],
         logo=doc.get("logo"),
-        season=doc["season"],
-        isPublic=doc["isPublic"],
-        requiresApproval=doc["requiresApproval"],
-        hideScoreboard=doc.get("hideScoreboard", False),
         createdBy=str(doc["createdBy"]),
+        createdAt=to_iso(doc["createdAt"]),
+        currentSeasonId=str(doc["currentSeasonId"]) if doc.get("currentSeasonId") else None,
+        pastSeasonIds=[str(x) for x in doc.get("pastSeasonIds", [])],
+    )
+
+
+def league_season_from_doc(doc: dict) -> LeagueSeason:
+    return LeagueSeason(
+        id=str(doc["_id"]),
+        leagueId=str(doc["leagueId"]),
+        season=doc["season"],
         isActive=doc["isActive"],
         memberCount=doc["memberCount"],
+        isPublic=doc["isPublic"],
+        requiresApproval=doc["requiresApproval"],
+        hideScoreboard=doc.get("hideScoreboard") or False,
         createdAt=to_iso(doc["createdAt"]),
         current_game_week=doc.get("current_game_week"),
         current_pick_week=doc.get("current_pick_week"),
         last_completed_week=doc.get("last_completed_week"),
     )
+
+

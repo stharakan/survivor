@@ -4,6 +4,11 @@ Table 1, 6.1-6.5).
 `createInvitationIndexes` is on the CR-105 cut list (identical zero-live-importer
 profile to `createGameIndexes` -- a new finding of the CR-105 audit, previously
 missing from the dead-code note) and is deliberately NOT ported.
+
+SUR-010: renamed leagueId→leagueSeasonId in all DB queries/inserts; aggregation
+pipelines now do a two-hop join (league_invitations → league_seasons → leagues) to
+assemble InvitationLeagueSummary. `get_invitation_league_id` renamed to
+`get_invitation_league_season_id`.
 """
 import secrets
 from datetime import datetime, timezone
@@ -24,9 +29,27 @@ from app.models.invitation import (
     LeagueInvitation,
 )
 
+# Two-hop join: league_invitations → league_seasons → leagues parent.
+_SEASON_JOIN = [
+    {"$lookup": {
+        "from": Collections.LEAGUE_SEASONS,
+        "localField": "leagueSeasonId",
+        "foreignField": "_id",
+        "as": "league_season",
+    }},
+    {"$unwind": "$league_season"},
+    {"$lookup": {
+        "from": Collections.LEAGUES,
+        "localField": "league_season.leagueId",
+        "foreignField": "_id",
+        "as": "league_parent",
+    }},
+    {"$unwind": "$league_parent"},
+]
+
 
 async def create_league_invitation(
-    league_id: str, created_by: str, max_uses: Optional[int], expires_at: Optional[datetime]
+    league_season_id: str, created_by: str, max_uses: Optional[int], expires_at: Optional[datetime]
 ) -> LeagueInvitation:
     """Port of lib/db.ts:1346-1379. `secrets.token_hex(32)` matches
     `crypto.randomBytes(32).toString('hex')` -- 32 random bytes -> 64 hex chars,
@@ -36,7 +59,7 @@ async def create_league_invitation(
     now = datetime.now(timezone.utc)
 
     result = await db[Collections.LEAGUE_INVITATIONS].insert_one({
-        "leagueId": ObjectId(league_id),
+        "leagueSeasonId": ObjectId(league_season_id),
         "token": token,
         "createdBy": ObjectId(created_by),
         "maxUses": max_uses,
@@ -49,7 +72,7 @@ async def create_league_invitation(
 
     return LeagueInvitation(
         id=str(result.inserted_id),
-        leagueId=league_id,
+        leagueSeasonId=league_season_id,
         token=token,
         createdBy=created_by,
         maxUses=max_uses,
@@ -61,14 +84,13 @@ async def create_league_invitation(
     )
 
 
-async def get_league_invitations(league_id: str) -> list[InvitationWithLeague]:
+async def get_league_invitations(league_season_id: str) -> list[InvitationWithLeague]:
     """Port of lib/db.ts:1381-1431."""
     db = get_database()
     docs = await db[Collections.LEAGUE_INVITATIONS].aggregate([
-        {"$match": {"leagueId": ObjectId(league_id)}},
-        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
+        {"$match": {"leagueSeasonId": ObjectId(league_season_id)}},
+        *_SEASON_JOIN,
         {"$lookup": {"from": Collections.USERS, "localField": "createdBy", "foreignField": "_id", "as": "creator"}},
-        {"$unwind": "$league"},
         {"$unwind": "$creator"},
         {"$sort": {"createdAt": -1}},
     ]).to_list(length=None)
@@ -77,7 +99,7 @@ async def get_league_invitations(league_id: str) -> list[InvitationWithLeague]:
     for inv in docs:
         result.append(InvitationWithLeague(
             id=str(inv["_id"]),
-            leagueId=str(inv["leagueId"]),
+            leagueSeasonId=str(inv["leagueSeasonId"]),
             token=inv["token"],
             createdBy=str(inv["createdBy"]),
             maxUses=inv.get("maxUses"),
@@ -87,11 +109,11 @@ async def get_league_invitations(league_id: str) -> list[InvitationWithLeague]:
             createdAt=to_iso(inv["createdAt"]),
             updatedAt=to_iso(inv["updatedAt"]),
             league=InvitationLeagueSummary(
-                id=str(inv["league"]["_id"]),
-                name=inv["league"]["name"],
-                description=inv["league"]["description"],
-                sportsLeague=inv["league"]["sportsLeague"],
-                memberCount=inv["league"]["memberCount"],
+                id=str(inv["league_season"]["_id"]),
+                name=inv["league_parent"]["name"],
+                description=inv["league_parent"]["description"],
+                sportsLeague=inv["league_parent"]["sportsLeague"],
+                memberCount=inv["league_season"]["memberCount"],
             ),
             # `creator.username` doesn't exist on the users collection (see
             # lib/db.ts:1428 -- same gap in the TS original, which reads
@@ -108,9 +130,8 @@ async def get_invitation_by_token(token: str) -> Optional[InvitationAcceptanceIn
     db = get_database()
     docs = await db[Collections.LEAGUE_INVITATIONS].aggregate([
         {"$match": {"token": token}},
-        {"$lookup": {"from": Collections.LEAGUES, "localField": "leagueId", "foreignField": "_id", "as": "league"}},
+        *_SEASON_JOIN,
         {"$lookup": {"from": Collections.USERS, "localField": "createdBy", "foreignField": "_id", "as": "creator"}},
-        {"$unwind": "$league"},
         {"$unwind": "$creator"},
         {"$limit": 1},
     ]).to_list(length=1)
@@ -133,11 +154,11 @@ async def get_invitation_by_token(token: str) -> Optional[InvitationAcceptanceIn
             isAtMaxUses=is_at_max_uses,
         ),
         league=InvitationLeagueSummary(
-            id=str(inv["league"]["_id"]),
-            name=inv["league"]["name"],
-            description=inv["league"]["description"],
-            sportsLeague=inv["league"]["sportsLeague"],
-            memberCount=inv["league"]["memberCount"],
+            id=str(inv["league_season"]["_id"]),
+            name=inv["league_parent"]["name"],
+            description=inv["league_parent"]["description"],
+            sportsLeague=inv["league_parent"]["sportsLeague"],
+            memberCount=inv["league_season"]["memberCount"],
         ),
         creator=InvitationAcceptanceInfoCreator(username=inv["creator"].get("username")),
     )
@@ -161,7 +182,7 @@ async def accept_invitation(token: str, user_id: str, team_name: str) -> dict:
         return {"success": False, "error": "Invitation is no longer valid"}
 
     existing_membership = await db[Collections.LEAGUE_MEMBERSHIPS].find_one({
-        "leagueId": ObjectId(invitation.league.id),
+        "leagueSeasonId": ObjectId(invitation.league.id),
         "userId": ObjectId(user_id),
     })
     if existing_membership:
@@ -177,20 +198,16 @@ async def accept_invitation(token: str, user_id: str, team_name: str) -> dict:
     return {"success": True, "membership": membership}
 
 
-async def get_invitation_league_id(invitation_id: str) -> Optional[str]:
+async def get_invitation_league_season_id(invitation_id: str) -> Optional[str]:
     """NEW in Phase 2 -- needed to fix the Table 1 6.7 authorization gap on
-    `DELETE /invitations/{invitationId}` (the TS route's own comment admits
-    "any authenticated user for now"; see routers/invitations.py for the real
-    admin-of-owning-league check this backs). Not a port of anything in
-    lib/db.ts -- that file never needed this lookup because the route never
-    checked ownership."""
+    `DELETE /invitations/{invitationId}`. SUR-010: returns leagueSeasonId."""
     db = get_database()
     doc = await db[Collections.LEAGUE_INVITATIONS].find_one(
-        {"_id": ObjectId(invitation_id)}, {"leagueId": 1}
+        {"_id": ObjectId(invitation_id)}, {"leagueSeasonId": 1}
     )
     if not doc:
         return None
-    return str(doc["leagueId"])
+    return str(doc["leagueSeasonId"])
 
 
 async def revoke_invitation(invitation_id: str) -> bool:

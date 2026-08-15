@@ -1,5 +1,8 @@
 """Port of lib/db.ts Pick operations (Rank 5 -- CR-105-FINDINGS.md Table 1,
-5.1-5.3)."""
+5.1-5.3).
+
+SUR-010: renamed leagueId→leagueSeasonId in all DB queries/inserts/filters.
+"""
 from datetime import datetime, timezone
 
 from bson import ObjectId
@@ -10,7 +13,7 @@ from app.db._shape import game_from_doc, team_from_doc, to_iso
 from app.models.pick import Pick
 
 
-async def create_pick(user_id: str, league_id: str, game_id: int, team_id: int, week: int) -> Pick:
+async def create_pick(user_id: str, league_season_id: str, game_id: int, team_id: int, week: int) -> Pick:
     """Port of lib/db.ts:762-870 createPick.
 
     BUG FIX (CR-105-FINDINGS.md Table 4, Pick row, sub-bullet b -- a genuine
@@ -43,12 +46,12 @@ async def create_pick(user_id: str, league_id: str, game_id: int, team_id: int, 
     db = get_database()
 
     # Exclude the pick being replaced for `week` itself -- this is an upsert
-    # keyed on (user, league, week) below, so switching *away from* this team
+    # keyed on (user, league_season, week) below, so switching *away from* this team
     # for `week`, or re-submitting the same team for `week`, must not count as
     # an extra use.
     existing_uses = await db[Collections.PICKS].count_documents({
         "userId": ObjectId(user_id),
-        "leagueId": ObjectId(league_id),
+        "leagueSeasonId": ObjectId(league_season_id),
         "teamId": team_id,
         "week": {"$ne": week},
     })
@@ -76,10 +79,10 @@ async def create_pick(user_id: str, league_id: str, game_id: int, team_id: int, 
 
     now = datetime.now(timezone.utc)
     await db[Collections.PICKS].replace_one(
-        {"userId": ObjectId(user_id), "leagueId": ObjectId(league_id), "week": week},
+        {"userId": ObjectId(user_id), "leagueSeasonId": ObjectId(league_season_id), "week": week},
         {
             "userId": ObjectId(user_id),
-            "leagueId": ObjectId(league_id),
+            "leagueSeasonId": ObjectId(league_season_id),
             "gameId": game_id,
             "teamId": team_id,
             "result": result,
@@ -90,7 +93,7 @@ async def create_pick(user_id: str, league_id: str, game_id: int, team_id: int, 
     )
 
     pick_doc = await db[Collections.PICKS].find_one({
-        "userId": ObjectId(user_id), "leagueId": ObjectId(league_id), "week": week,
+        "userId": ObjectId(user_id), "leagueSeasonId": ObjectId(league_season_id), "week": week,
     })
     pick_id = str(pick_doc["_id"])
 
@@ -104,11 +107,11 @@ async def create_pick(user_id: str, league_id: str, game_id: int, team_id: int, 
     )
 
 
-async def get_user_picks_by_league(user_id: str, league_id: str) -> list[Pick]:
+async def get_user_picks_by_league(user_id: str, league_season_id: str) -> list[Pick]:
     """Port of lib/db.ts:872-948."""
     db = get_database()
     docs = await db[Collections.PICKS].aggregate([
-        {"$match": {"userId": ObjectId(user_id), "leagueId": ObjectId(league_id)}},
+        {"$match": {"userId": ObjectId(user_id), "leagueSeasonId": ObjectId(league_season_id)}},
         {"$lookup": {"from": Collections.GAMES, "localField": "gameId", "foreignField": "id", "as": "game"}},
         {"$lookup": {"from": Collections.TEAMS, "localField": "teamId", "foreignField": "id", "as": "team"}},
         {"$unwind": "$game"},
@@ -132,11 +135,11 @@ async def get_user_picks_by_league(user_id: str, league_id: str) -> list[Pick]:
     return picks
 
 
-async def get_user_pick_for_week(user_id: str, league_id: str, week: int) -> Pick | None:
+async def get_user_pick_for_week(user_id: str, league_season_id: str, week: int) -> Pick | None:
     """Port of lib/db.ts:968-1056."""
     db = get_database()
     docs = await db[Collections.PICKS].aggregate([
-        {"$match": {"userId": ObjectId(user_id), "leagueId": ObjectId(league_id), "week": week}},
+        {"$match": {"userId": ObjectId(user_id), "leagueSeasonId": ObjectId(league_season_id), "week": week}},
         {"$lookup": {"from": Collections.GAMES, "localField": "gameId", "foreignField": "id", "as": "game"}},
         {"$lookup": {"from": Collections.TEAMS, "localField": "teamId", "foreignField": "id", "as": "team"}},
         {"$unwind": "$game"},

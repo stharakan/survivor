@@ -13,7 +13,7 @@ from app.db.invitations import (
     accept_invitation,
     create_league_invitation,
     get_invitation_by_token,
-    get_invitation_league_id,
+    get_invitation_league_season_id,
     get_league_invitations,
     revoke_invitation,
 )
@@ -34,11 +34,11 @@ async def delete_invitation(invitation_id: str, request: Request) -> dict:
     """
     auth_user = await verify_auth_token(request)
 
-    league_id = await get_invitation_league_id(invitation_id)
-    if league_id is None:
+    league_season_id = await get_invitation_league_season_id(invitation_id)
+    if league_season_id is None:
         raise ApiError("Invitation not found", 404)
 
-    membership = await get_membership_for_user(league_id, auth_user.user_id)
+    membership = await get_membership_for_user(league_season_id, auth_user.user_id)
     if not membership or not membership.isAdmin:
         raise ApiError("Admin access required", 403)
 
@@ -70,28 +70,28 @@ async def get_invite(token: str) -> dict:
     return ok(invitation.model_dump())
 
 
-@router.get("/api/leagues/{league_id}/invitations")
-async def list_league_invitations(league_id: str, request: Request) -> dict:
+@router.get("/api/league-seasons/{league_season_id}/invitations")
+async def list_league_invitations(league_season_id: str, request: Request) -> dict:
     """Port of app/api/leagues/[leagueId]/invitations/route.ts:8-50 GET (admin only)."""
     auth_user = await verify_auth_token(request)
 
-    membership = await get_membership_for_user(league_id, auth_user.user_id)
+    membership = await get_membership_for_user(league_season_id, auth_user.user_id)
     if not membership or not membership.isAdmin:
         raise ApiError("Admin access required", 403)
 
-    invitations = await get_league_invitations(league_id)
+    invitations = await get_league_invitations(league_season_id)
     return ok([i.model_dump() for i in invitations])
 
 
-@router.post("/api/leagues/{league_id}/invitations")
-async def create_league_invitation_route(league_id: str, body: CreateInvitationRequestBody, request: Request) -> dict:
+@router.post("/api/league-seasons/{league_season_id}/invitations")
+async def create_league_invitation_route(league_season_id: str, body: CreateInvitationRequestBody, request: Request) -> dict:
     """Port of app/api/leagues/[leagueId]/invitations/route.ts:52-106 POST (admin only)."""
     auth_user = await verify_auth_token(request)
 
-    membership = await get_membership_for_user(league_id, auth_user.user_id)
+    membership = await get_membership_for_user(league_season_id, auth_user.user_id)
     if not membership or not membership.isAdmin:
         raise ApiError("Admin access required", 403)
 
     expires_at = datetime.fromisoformat(body.expiresAt.replace("Z", "+00:00")) if body.expiresAt else None
-    invitation = await create_league_invitation(league_id, auth_user.user_id, body.maxUses, expires_at)
+    invitation = await create_league_invitation(league_season_id, auth_user.user_id, body.maxUses, expires_at)
     return ok(invitation.model_dump(), message="Invitation created successfully")

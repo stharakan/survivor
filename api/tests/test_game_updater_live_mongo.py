@@ -75,10 +75,10 @@ async def _insert_game(db, *, week, status, when, home_id, away_id, home_score=N
     return doc
 
 
-async def _insert_pick(db, *, user_id, league_id, game_id, team_id, week, result=None):
+async def _insert_pick(db, *, user_id, league_season_id, game_id, team_id, week, result=None):
     pick_doc = {
         "userId": ObjectId(user_id),
-        "leagueId": ObjectId(league_id),
+        "leagueSeasonId": ObjectId(league_season_id),
         "gameId": game_id,
         "teamId": team_id,
         "result": result,
@@ -90,9 +90,9 @@ async def _insert_pick(db, *, user_id, league_id, game_id, team_id, week, result
     return pick_doc
 
 
-async def _set_league_weeks(db, league_id, *, current_game_week, current_pick_week):
-    await db["leagues"].update_one(
-        {"_id": ObjectId(league_id)},
+async def _set_league_weeks(db, league_season_id, *, current_game_week, current_pick_week):
+    await db["league_seasons"].update_one(
+        {"_id": ObjectId(league_season_id)},
         {"$set": {"current_game_week": current_game_week, "current_pick_week": current_pick_week}},
     )
 
@@ -151,7 +151,7 @@ async def test_postponement_before_gameweek_start_deletes_picks():
 
     game = await _insert_game(db, week=2, status="not_started", when=now + timedelta(days=7),
                                home_id=home_id, away_id=away_id)
-    await _insert_pick(db, user_id=owner.id, league_id=league.id, game_id=game["id"], team_id=home_id, week=2)
+    await _insert_pick(db, user_id=owner.id, league_season_id=league.id, game_id=game["id"], team_id=home_id, week=2)
 
     api_game = {"id": 999001, "status": "POSTPONED", "utcDate": (now + timedelta(days=35)).isoformat(),
                 "score": {"fullTime": {"home": None, "away": None}}}
@@ -191,7 +191,7 @@ async def test_postponement_after_gameweek_start_marks_dnp():
 
     game = await _insert_game(db, week=2, status="not_started", when=now - timedelta(hours=1),
                                home_id=home_id, away_id=away_id)
-    await _insert_pick(db, user_id=owner.id, league_id=league.id, game_id=game["id"], team_id=home_id, week=2)
+    await _insert_pick(db, user_id=owner.id, league_season_id=league.id, game_id=game["id"], team_id=home_id, week=2)
 
     api_game = {"id": 999002, "status": "POSTPONED", "utcDate": (now + timedelta(days=35)).isoformat(),
                 "score": {"fullTime": {"home": None, "away": None}}}
@@ -255,10 +255,10 @@ async def test_dnp_backfill_in_update_pick_results():
     now_completed_game = await _insert_game(db, week=4, status="completed", when=now - timedelta(days=1),
                                              home_id=home_id, away_id=away_id, home_score=2, away_score=0)
 
-    still_postponed_pick = await _insert_pick(db, user_id=owner.id, league_id=league.id,
+    still_postponed_pick = await _insert_pick(db, user_id=owner.id, league_season_id=league.id,
                                                game_id=still_postponed_game["id"], team_id=home_id, week=3,
                                                result="dnp")
-    replayed_pick = await _insert_pick(db, user_id=owner.id, league_id=league.id,
+    replayed_pick = await _insert_pick(db, user_id=owner.id, league_season_id=league.id,
                                         game_id=now_completed_game["id"], team_id=home_id, week=4, result="dnp")
 
     await update_pick_results()
@@ -285,12 +285,12 @@ async def test_calculate_scores_and_strikes_with_dnp_picks():
     league = await create_league("SUR-008 Score League", "desc", SPORTS_LEAGUE, SEASON, True, False, owner.id)
     membership = await create_league_membership(league.id, owner.id, "Owner Team")
 
-    await db["leagues"].update_one({"_id": ObjectId(league.id)}, {"$set": {"last_completed_week": 3}})
+    await db["league_seasons"].update_one({"_id": ObjectId(league.id)}, {"$set": {"last_completed_week": 3}})
 
     # Week 1: win, week 2: dnp, week 3: loss.
-    await _insert_pick(db, user_id=owner.id, league_id=league.id, game_id=1, team_id=home_id, week=1, result="win")
-    await _insert_pick(db, user_id=owner.id, league_id=league.id, game_id=2, team_id=home_id, week=2, result="dnp")
-    await _insert_pick(db, user_id=owner.id, league_id=league.id, game_id=3, team_id=home_id, week=3, result="loss")
+    await _insert_pick(db, user_id=owner.id, league_season_id=league.id, game_id=1, team_id=home_id, week=1, result="win")
+    await _insert_pick(db, user_id=owner.id, league_season_id=league.id, game_id=2, team_id=home_id, week=2, result="dnp")
+    await _insert_pick(db, user_id=owner.id, league_season_id=league.id, game_id=3, team_id=home_id, week=3, result="loss")
 
     await calculate_scores_and_strikes()
 

@@ -23,39 +23,39 @@ from app.db.memberships import (
 from app.db.mongodb import get_database
 from app.models.requests import UpdateMemberRequest
 
-router = APIRouter(prefix="/api/leagues/{league_id}/members", tags=["members"])
+router = APIRouter(prefix="/api/league-seasons/{league_season_id}/members", tags=["members"])
 
 
 @router.get("")
-async def list_members(league_id: str, request: Request) -> dict:
+async def list_members(league_season_id: str, request: Request) -> dict:
     """Port of app/api/leagues/[leagueId]/members/route.ts:6-32."""
-    await require_league_membership(request, league_id)
-    members = await get_league_members_with_user_data(league_id)
+    await require_league_membership(request, league_season_id)
+    members = await get_league_members_with_user_data(league_season_id)
     return ok([m.model_dump() for m in members])
 
 
 @router.get("/{member_id}")
-async def get_member(league_id: str, member_id: str, request: Request) -> dict:
+async def get_member(league_season_id: str, member_id: str, request: Request) -> dict:
     """Port of app/api/leagues/[leagueId]/members/[memberId]/route.ts:7-48
     GET -- authenticated only (no membership-of-this-league check in the TS
     original either; preserved as-is, not one of Table 1's named gaps)."""
     await verify_auth_token(request)
 
-    member = await get_league_member(league_id, member_id)
+    member = await get_league_member(league_season_id, member_id)
     if not member:
         raise ApiError("Member not found", 404)
     return ok(member.model_dump())
 
 
 @router.patch("/{member_id}")
-async def patch_member(league_id: str, member_id: str, body: UpdateMemberRequest, request: Request) -> dict:
+async def patch_member(league_season_id: str, member_id: str, body: UpdateMemberRequest, request: Request) -> dict:
     """Port of app/api/leagues/[leagueId]/members/[memberId]/route.ts:50-132 PATCH."""
-    existing_member = await get_league_member(league_id, member_id)
+    existing_member = await get_league_member(league_season_id, member_id)
     if not existing_member:
         raise ApiError("Member not found", 404)
 
     updates = body.model_dump(exclude_unset=True)
-    await authorize_request(request, league_id, member_id, updates)
+    await authorize_request(request, league_season_id, member_id, updates)
 
     original_admin_status = existing_member.isAdmin
 
@@ -68,7 +68,7 @@ async def patch_member(league_id: str, member_id: str, body: UpdateMemberRequest
         kwargs["team_name"] = updates["teamName"]
 
     try:
-        await update_member_status(league_id, member_id, **kwargs)
+        await update_member_status(league_season_id, member_id, **kwargs)
     except ValueError as e:
         raise ApiError(str(e), 400)
 
@@ -76,7 +76,7 @@ async def patch_member(league_id: str, member_id: str, body: UpdateMemberRequest
         auth_user = await verify_auth_token(request)
         await log_admin_privilege_change(
             auth_user.user_id,
-            league_id,
+            league_season_id,
             member_id,
             original_admin_status,
             updates["isAdmin"],
@@ -86,20 +86,20 @@ async def patch_member(league_id: str, member_id: str, body: UpdateMemberRequest
             },
         )
 
-    updated_member = await get_league_member(league_id, member_id)
+    updated_member = await get_league_member(league_season_id, member_id)
     return ok(updated_member.model_dump() if updated_member else None, message="Member updated successfully")
 
 
 @router.delete("/{member_id}")
-async def delete_member(league_id: str, member_id: str, request: Request) -> dict:
+async def delete_member(league_season_id: str, member_id: str, request: Request) -> dict:
     """Port of app/api/leagues/[leagueId]/members/[memberId]/route.ts:135-234 DELETE."""
     auth_user = await verify_auth_token(request)
 
-    target_member = await get_league_member(league_id, member_id)
+    target_member = await get_league_member(league_season_id, member_id)
     if not target_member:
         raise ApiError("Member not found", 404)
 
-    await validate_admin_permission(auth_user.user_id, league_id, member_id)
+    await validate_admin_permission(auth_user.user_id, league_season_id, member_id)
 
     if auth_user.user_id == target_member.user:
         raise ApiError("Cannot remove your own membership", 403)
@@ -107,7 +107,7 @@ async def delete_member(league_id: str, member_id: str, request: Request) -> dic
     if target_member.league.createdBy == target_member.user:
         raise ApiError("Cannot remove league creator from league", 403)
 
-    await remove_member_from_league(league_id, member_id, auth_user.user_id)
+    await remove_member_from_league(league_season_id, member_id, auth_user.user_id)
 
     try:
         db = get_database()
@@ -115,7 +115,7 @@ async def delete_member(league_id: str, member_id: str, request: Request) -> dic
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "action": "member_removal",
             "requestingUserId": auth_user.user_id,
-            "leagueId": league_id,
+            "leagueSeasonId": league_season_id,
             "targetMemberId": member_id,
             "targetMemberTeamName": target_member.teamName,
             "context": {

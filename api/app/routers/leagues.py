@@ -9,7 +9,8 @@ from fastapi import APIRouter, Request
 
 from app.core.auth_deps import require_league_membership, verify_auth_token
 from app.core.responses import ApiError, ok
-from app.db.leagues import create_league, get_available_leagues, get_league_by_id, update_league_settings
+from app.db.league_seasons import get_available_league_seasons, get_league_season_by_id, update_league_season_settings
+from app.db.leagues import create_league
 from app.db.memberships import get_membership_for_user
 from app.models.requests import CreateLeagueRequest, UpdateLeagueRequest
 
@@ -30,7 +31,7 @@ _LEAGUE_UPDATE_KWARG_NAMES = {
 async def list_leagues(request: Request) -> dict:
     """Port of app/api/leagues/route.ts:7-36 GET."""
     auth_user = await verify_auth_token(request)
-    leagues = await get_available_leagues(auth_user.user_id)
+    leagues = await get_available_league_seasons(auth_user.user_id)
     return ok([l.model_dump() for l in leagues])
 
 
@@ -55,7 +56,7 @@ async def get_league(league_id: str, request: Request) -> dict:
     """Port of app/api/leagues/[leagueId]/route.ts:10-42 GET."""
     await require_league_membership(request, league_id)
 
-    league = await get_league_by_id(league_id)
+    league = await get_league_season_by_id(league_id)
     if not league:
         raise ApiError("League not found", 404)
     return ok(league.model_dump())
@@ -72,7 +73,7 @@ async def patch_league(league_id: str, body: UpdateLeagueRequest, request: Reque
 
     updates = body.model_dump(exclude_unset=True)
     kwargs = {_LEAGUE_UPDATE_KWARG_NAMES.get(k, k): v for k, v in updates.items()}
-    updated_league = await update_league_settings(league_id, **kwargs)
+    updated_league = await update_league_season_settings(league_id, **kwargs)
     if not updated_league:
         raise ApiError("League not found", 404)
     return ok(updated_league.model_dump())

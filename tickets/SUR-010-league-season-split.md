@@ -186,6 +186,117 @@ them out for a quick sanity check before/during implementation:
   cluster tier if this matters (Atlas M-tier free/shared clusters are the
   likely case here given the connection string).
 
+## Implementation Notes
+
+Decisions made during implementation (2026-08-14), not in the original spec:
+
+- **No `leagues_pre_migration_backup` collection.** The ticket proposed keeping a
+  same-DB copy of old `leagues` docs for rollback. Skipped — the rollback mode
+  reverses the `$rename`s and drops the Phase 1 new docs directly; an external
+  `mongodump` is the right disaster-recovery tool, not a shadow collection.
+- **`audit_logs` IS included in Phase 2 rename** (`leagueId` → `leagueSeasonId`).
+  Full 100% field rename — no collections left behind. Existing `audit_logs` docs
+  are append-only event records (member removal, admin privilege changes) with a
+  `leagueId` field; the script renames them the same as the other four collections.
+- **`scripts/init-db.ts` and `scripts/create-epl-league.ts` deleted on this branch.**
+  Both are stale after the migration (they construct old-shape League docs directly
+  via `lib/db.ts`). Neither is useful for SUR-010 dev since we work with the existing
+  dev DB, not a fresh seed. Replaced conceptually by `scripts/create-league-season.ts`
+  (Stage D).
+- **Demo League deleted in Phase 0** as originally spec'd — confirmed there is no need
+  to keep a dev-only league object around since we have a dedicated dev DB
+  (`survivor-league-dev`) that holds the real migration target.
+- **`lib/db.ts` deleted** (2026-08-15). Its only callers (`scripts/init-db.ts`,
+  `scripts/create-epl-league.ts`) were already deleted on this branch. Remaining
+  scripts (`backfill-external-ids.ts`, `import-epl-2025-fixtures.ts`) import
+  `lib/mongodb.ts` directly and don't touch the leagues collection — no update needed.
+- **Migration script idempotency bug fixed** (2026-08-15). Phase 1's skip-guard was
+  checking `leagues.count() === 0`, but the new parent League doc still lives in
+  `leagues` after the first run. Fixed to check `leagues.count({ season: { $exists: true } }) === 0`
+  (old-style docs only).
+- **Dev DB guard string**: `survivor-league-dev` — script refuses to run against any
+  other DB name without `--allow-prod`.
+- **Stage C bug found and fixed** (2026-08-15). `app/admin/page.tsx` had two direct
+  `fetch` calls to `/api/leagues/${id}/invitations` (GET and POST) that were not
+  updated during the Stage C mechanical rename. Fixed to `/api/league-seasons/${id}/invitations`.
+  Would have broken the admin Invitations tab entirely.
+- **`next.config.mjs` updated for local dev proxy** (2026-08-15). `output: 'export'`
+  only applies in production builds now; dev mode uses a normal Next.js server with a
+  `rewrites` rule proxying `/api/*` → `http://localhost:8001/api/*`. Without this,
+  `npm run dev` returned 404 for all API calls (no route handlers exist in Next.js
+  after CR-106).
+- **`api/app/db/indexes.py` is NOT wired into startup** — it's a standalone one-time
+  script. The unique `{leagueId, season}` index on `league_seasons` exists on dev
+  because it was created during the manual dev migration, but must be run explicitly
+  on prod before or after the Stage F data migration:
+  `cd api && uv run --project .. python -m app.db.indexes`
+  Add this to the Stage F checklist. (Note: `uv run --project ..`, not bare `python`.)
+- **`create_league_season` duplicate-season behavior** (2026-08-15): running the
+  ops script twice with the same season string correctly fails — the unique index
+  prevents insertion and the route returns a generic 500 (MongoDB `DuplicateKeyError`
+  is unhandled at the route layer). Fail-loud behavior is acceptable for this
+  admin-only ops path; no data corruption is possible.
+
+### Current dev DB state (confirmed 2026-08-15)
+
+Dev DB was re-cloned from prod (old-shape), fully re-migrated, and the 2026/2027
+season re-created via `create-league-season.ts` — confirming the full Stage A→D
+pipeline end-to-end on a fresh dataset. New League `_id` assigned during this run.
+
+```
+leagues (1 document):
+  _id: 6a808a258ef5ac86e194fb86
+  name: "Tharakan Bros Survivor League", sportsLeague: "EPL"
+  currentSeasonId: 6a808a591aa17459848e3350   (→ 2026/2027 season)
+  pastSeasonIds: ["689ac6df431134389631c9c8"] (→ 2025/2026 season)
+
+league_seasons (2 documents):
+  689ac6df...  season="2025/2026", isActive=false, memberCount=57,
+               current_game_week=31, current_pick_week=31, last_completed_week=30
+               leagueId → 6a808a25... (parent League)
+  6a808a59...  season="2026/2027", isActive=true, memberCount=56,
+               week counters=null, createdAt=2026-08-15
+               leagueId → 6a808a25... (same parent League)
+
+league_memberships: 113 docs, all using leagueSeasonId
+picks:              1070 docs, all using leagueSeasonId
+league_invitations: 4 docs, all using leagueSeasonId
+audit_logs:         0 docs with leagueId
+```
+
+No games exist for "2026/2027" — expected, EPL 2026/2027 fixtures not yet imported.
+The make-picks page shows an empty game list for the active season; this is correct
+behavior. 2025/2026 picks/results/scoreboard data is intact and queryable by season ID.
+
+Migration script confirmed idempotent: second `--execute` run skipped all phases
+and passed Phase 3 verification with no changes.
+
+### Stage completion status
+
+- **Stage A**: Done. Migration script written, idempotency confirmed by running
+  `--execute` twice against a fresh prod-copy clone on 2026-08-15. All Phase 3
+  checks pass on both runs.
+- **Stage B**: Done. All models, DB modules, routers, auth_deps.py updated.
+- **Stage C**: Done. Mechanical renames complete + manual click-through confirmed
+  2026-08-15 (login → league select → make-picks → scoreboard → results →
+  admin members → admin invitations). Invitation tab bug found and fixed.
+- **Stage D**: Done. `create_league_season()` db function, `create-league-season.ts`
+  ops script, and `POST /api/admin/create-season` route confirmed end-to-end
+  2026-08-15: 56 members carried over, `isAdmin` preserved, `isPaid` reset,
+  `League.currentSeasonId`/`pastSeasonIds` correct. Second run correctly rejected.
+- **Stage E**: Done. All tests green (68/68).
+  - `test_game_updater_live_mongo.py` updated ✅
+  - `test_live_mongo_smoke.py` updated ✅
+  - `test_league_seasons.py` added (carryover logic + old season queryable) ✅
+  - `test_migration_script.py` added (execute/dry-run/idempotent against Docker Mongo) ✅
+  - `lib/__tests__/scoring.test.ts` moot (CR-108 deleted it) ✅
+- **Stage F**: Done (2026-08-15).
+  - `mongodump-backup-20260815/` snapshot taken before execute.
+  - Dry-run reviewed: 1 real league (57 members, 1070 picks), Demo League found with 3 members/6 picks to delete.
+  - `--execute` run: Demo League deleted, `Tharakan Bros Survivor League` migrated to `league_seasons` (id `689ac6df...`) + new parent `leagues` doc (id `6a80955a...`). 57 memberships, 1070 picks, 4 invitations, 19 audit_logs renamed `leagueId` → `leagueSeasonId`. Phase 3: all checks passed.
+  - Indexes created on prod: `league_seasons_leagueId_season_unique`, `memberships_leagueSeasonId_userId_unique`, `invitations_leagueSeasonId_isActive`.
+  - EPL 2026/2027 season created on prod after deploying new code to Heroku.
+
 ## Stage A — Schema & migration script (dev)
 
 New TS ops script, `scripts/migrate-league-to-leagueseason.ts` (same style as
@@ -233,11 +344,11 @@ multi-season grouping to resolve in current data):
 3. Insert a new `leagues` doc (fresh `ObjectId`) with the captured fields plus
    `currentSeasonId: <the league_seasons doc's _id>`, `pastSeasonIds: []`.
 4. Backfill `league_seasons.leagueId` with the new parent's `_id`.
-5. Drop the original `leagues` collection **only after** verifying `(4)`
-   succeeded for every doc and doc counts reconcile; keep a
-   `leagues_pre_migration_backup` copy (rename-or-recopy, operator's choice via
-   flag) rather than an unconditional drop, so rollback doesn't depend on
-   external `mongodump` state.
+5. Drop the old-style `leagues` docs (those with a `season` field) **only after**
+   verifying `(4)` succeeded for every doc and doc counts reconcile. No backup
+   collection is kept — rollback mode reverses `$rename`s and drops Phase 1 docs
+   directly; external `mongodump` is the disaster-recovery tool (see Implementation
+   Notes).
 
 ### Phase 2 — field rename across dependent collections
 

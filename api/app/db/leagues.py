@@ -1,6 +1,9 @@
 """Port of lib/db.ts League operations (Rank 2 -- CR-105-FINDINGS.md Table 1,
-2.1-2.5), plus `start_new_season`, a NEW capability with no TS equivalent to port
-(see the Addendum's "season rollover" section).
+2.1-2.5).
+
+SUR-010: `create_league` creates BOTH a parent `leagues` doc AND a `league_seasons`
+doc and returns the flat League with `id = LeagueSeason._id`. All season-scoped
+reads are now in `league_seasons.py`; season rollover is `create_league_season`.
 
 `DELETE /leagues/[leagueId]` (Table 3 item 9, cut-list) is a route-level 501 stub
 with no lib/db.ts counterpart -- Phase 2 omits the route entirely per the CR-105
@@ -10,14 +13,10 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from bson import ObjectId
-from pymongo import ReturnDocument
 
 from app.db.mongodb import get_database, Collections
-from app.db._shape import league_from_doc
-from app.models.league import League
-from app.models.season_summary import SeasonSummary
-
-_UNSET = object()
+from app.db._shape import flatten_league_season, league_parent_from_doc
+from app.models.league import League, LeagueParent
 
 
 async def create_league(
@@ -29,184 +28,54 @@ async def create_league(
     requires_approval: bool,
     created_by: str,
 ) -> League:
-    """Port of lib/db.ts:97-139."""
+    """Port of lib/db.ts:97-139. SUR-010: now creates BOTH a parent `leagues` doc
+    AND a `league_seasons` doc, then returns flat League with `id = LeagueSeason._id`.
+    This preserves backward compatibility for all existing callers."""
     db = get_database()
-    result = await db[Collections.LEAGUES].insert_one({
+    now = datetime.now(timezone.utc)
+
+    parent_result = await db[Collections.LEAGUES].insert_one({
         "name": name,
         "description": description,
         "sportsLeague": sports_league,
+        "createdBy": ObjectId(created_by),
+        "createdAt": now,
+        "currentSeasonId": None,
+        "pastSeasonIds": [],
+    })
+    parent_id = parent_result.inserted_id
+
+    season_result = await db[Collections.LEAGUE_SEASONS].insert_one({
+        "leagueId": parent_id,
         "season": season,
         "isPublic": is_public,
         "requiresApproval": requires_approval,
-        "hideScoreboard": False,  # default to false (visible)
-        "createdBy": ObjectId(created_by),
+        "hideScoreboard": False,
         "isActive": True,
         "memberCount": 0,
-        "createdAt": datetime.now(timezone.utc),
+        "createdAt": now,
+        "current_game_week": None,
+        "current_pick_week": None,
+        "last_completed_week": None,
     })
+    season_id = season_result.inserted_id
 
-    return League(
-        id=str(result.inserted_id),
-        name=name,
-        description=description,
-        sportsLeague=sports_league,
-        season=season,
-        isPublic=is_public,
-        requiresApproval=requires_approval,
-        hideScoreboard=False,
-        createdBy=created_by,
-        isActive=True,
-        memberCount=0,
-        createdAt=datetime.now(timezone.utc).isoformat(),
-        current_game_week=None,
-        current_pick_week=None,
-        last_completed_week=None,
+    await db[Collections.LEAGUES].update_one(
+        {"_id": parent_id}, {"$set": {"currentSeasonId": season_id}}
     )
 
+    parent_doc = await db[Collections.LEAGUES].find_one({"_id": parent_id})
+    season_doc = await db[Collections.LEAGUE_SEASONS].find_one({"_id": season_id})
+    return flatten_league_season(season_doc, parent_doc)
 
-async def get_league_by_id(league_id: str) -> Optional[League]:
-    """Port of lib/db.ts:141-164."""
+
+async def get_league_parent_by_id(league_id: str) -> Optional[LeagueParent]:
+    """Fetch the parent-level League doc (year-agnostic identity), not a season.
+    Used by parent-level admin endpoints."""
     db = get_database()
-    league = await db[Collections.LEAGUES].find_one({"_id": ObjectId(league_id)})
-    if not league:
+    doc = await db[Collections.LEAGUES].find_one({"_id": ObjectId(league_id)})
+    if not doc:
         return None
-    return league_from_doc(league)
+    return league_parent_from_doc(doc)
 
 
-async def update_league_settings(
-    league_id: str,
-    *,
-    name=_UNSET,
-    description=_UNSET,
-    logo=_UNSET,
-    sports_league=_UNSET,
-    is_public=_UNSET,
-    requires_approval=_UNSET,
-    hide_scoreboard=_UNSET,
-) -> Optional[League]:
-    """Port of lib/db.ts:166-214. Uses the same UNSET-sentinel pattern as
-    auth.update_user: an omitted kwarg means "leave alone" (matching TS's
-    `updates.x !== undefined` checks), not "set to None"."""
-    db = get_database()
-    update_data: dict = {}
-    if name is not _UNSET:
-        update_data["name"] = name
-    if description is not _UNSET:
-        update_data["description"] = description
-    if logo is not _UNSET:
-        update_data["logo"] = logo
-    if sports_league is not _UNSET:
-        update_data["sportsLeague"] = sports_league
-    if is_public is not _UNSET:
-        update_data["isPublic"] = is_public
-    if requires_approval is not _UNSET:
-        update_data["requiresApproval"] = requires_approval
-    if hide_scoreboard is not _UNSET:
-        update_data["hideScoreboard"] = hide_scoreboard
-
-    result = await db[Collections.LEAGUES].find_one_and_update(
-        {"_id": ObjectId(league_id)},
-        {"$set": update_data},
-        return_document=ReturnDocument.AFTER,
-    )
-    if not result:
-        return None
-    return league_from_doc(result)
-
-
-async def get_all_leagues() -> list[League]:
-    """Port of lib/db.ts:216-238."""
-    db = get_database()
-    leagues = await db[Collections.LEAGUES].find({"isActive": True}).to_list(length=None)
-    return [league_from_doc(doc) for doc in leagues]
-
-
-async def get_available_leagues(user_id: str) -> list[League]:
-    """Port of lib/db.ts:239-291."""
-    db = get_database()
-    memberships = await db[Collections.LEAGUE_MEMBERSHIPS].find({"userId": ObjectId(user_id)}).to_list(length=None)
-    member_league_ids = [m["leagueId"] for m in memberships]
-
-    leagues = await db[Collections.LEAGUES].aggregate([
-        {"$match": {"isActive": True, "$or": [{"isPublic": True}, {"_id": {"$in": member_league_ids}}]}},
-        {"$lookup": {
-            "from": Collections.LEAGUE_MEMBERSHIPS,
-            "localField": "_id",
-            "foreignField": "leagueId",
-            "as": "memberships",
-        }},
-        {"$addFields": {"memberCount": {"$size": "$memberships"}}},
-    ]).to_list(length=None)
-
-    return [league_from_doc(doc) for doc in leagues]
-
-
-async def start_new_season(
-    league_id: str,
-    *,
-    new_season: str,
-    archive_summary: Optional[SeasonSummary] = None,
-) -> League:
-    """NEW capability, no TS equivalent to port -- see CR-105-FINDINGS.md Addendum
-    ("season rollover"). Decision recorded there: **in-place rollover**, not a
-    League/Season entity split.
-
-    Archives current standings (caller-supplied -- typically the output of
-    get_season_summary/results.get_season_summary), resets
-    League.season/current_*_week, and resets every active LeagueMembership's
-    points/strikes/rank in place. Keeps the same `League._id`, so invites and
-    membership history stay linked.
-
-    Design choices flagged for review (see tickets/CR-105-PHASE1-REPORT.md):
-    - `archive_summary` is caller-supplied rather than computed here. The
-      Addendum's "archive if not already done" is an idempotency policy that
-      belongs to the caller/route (Phase 2), not something this data-access
-      function should silently decide on its own.
-    - The archive is stored in a new `seasonArchive` array field on the League
-      document -- there is no existing schema precedent for this, since no
-      rollover has ever happened. Phase 2 should confirm this shape before
-      relying on it for a "past seasons" UI.
-    - Does NOT repopulate Team/Game fixtures for the new season -- that's the
-      existing scripts/import-epl-2025-fixtures.ts import pattern's job,
-      explicitly out of scope per the Addendum. Left for Phase 2/3 to wire up as
-      an admin action, adapted to target an existing league.
-    """
-    db = get_database()
-
-    league_doc = await db[Collections.LEAGUES].find_one({"_id": ObjectId(league_id)})
-    if not league_doc:
-        raise ValueError("League not found")
-
-    if archive_summary is not None:
-        await db[Collections.LEAGUES].update_one(
-            {"_id": ObjectId(league_id)},
-            {"$push": {"seasonArchive": {
-                "season": league_doc["season"],
-                "archivedAt": datetime.now(timezone.utc),
-                "summary": archive_summary.model_dump(),
-            }}},
-        )
-
-    updated = await db[Collections.LEAGUES].find_one_and_update(
-        {"_id": ObjectId(league_id)},
-        {"$set": {
-            "season": new_season,
-            "current_game_week": None,
-            "current_pick_week": None,
-            "last_completed_week": None,
-        }},
-        return_document=ReturnDocument.AFTER,
-    )
-
-    await db[Collections.LEAGUE_MEMBERSHIPS].update_many(
-        {"leagueId": ObjectId(league_id), "isActive": True},
-        {"$set": {
-            "points": 0,
-            "strikes": 0,
-            "rank": 0,
-            "lossStrikes": 0,
-            "missingPickStrikes": 0,
-        }},
-    )
-
-    return league_from_doc(updated)
