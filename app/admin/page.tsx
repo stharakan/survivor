@@ -142,7 +142,7 @@ function AdminPortalContent() {
       
       setInvitationsLoading(true)
       try {
-        const response = await fetch(`/api/leagues/${currentLeague.id}/invitations`)
+        const response = await fetch(`/api/league-seasons/${currentLeague.id}/invitations`)
         const data = await response.json()
         
         if (data.success) {
@@ -218,7 +218,7 @@ function AdminPortalContent() {
         body.expiresAt = null
       }
       
-      const response = await fetch(`/api/leagues/${currentLeague.id}/invitations`, {
+      const response = await fetch(`/api/league-seasons/${currentLeague.id}/invitations`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

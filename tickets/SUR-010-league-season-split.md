@@ -206,6 +206,14 @@ Decisions made during implementation (2026-08-14), not in the original spec:
 - **Demo League deleted in Phase 0** as originally spec'd — confirmed there is no need
   to keep a dev-only league object around since we have a dedicated dev DB
   (`survivor-league-dev`) that holds the real migration target.
+- **`lib/db.ts` deleted** (2026-08-15). Its only callers (`scripts/init-db.ts`,
+  `scripts/create-epl-league.ts`) were already deleted on this branch. Remaining
+  scripts (`backfill-external-ids.ts`, `import-epl-2025-fixtures.ts`) import
+  `lib/mongodb.ts` directly and don't touch the leagues collection — no update needed.
+- **Migration script idempotency bug fixed** (2026-08-15). Phase 1's skip-guard was
+  checking `leagues.count() === 0`, but the new parent League doc still lives in
+  `leagues` after the first run. Fixed to check `leagues.count({ season: { $exists: true } }) === 0`
+  (old-style docs only).
 - **Dev DB guard string**: `survivor-league-dev` — script refuses to run against any
   other DB name without `--allow-prod`.
 
@@ -246,16 +254,23 @@ in the migration script; replicate in backend shape functions).
 
 ### Stage completion status
 
-- **Stage A**: `scripts/migrate-league-to-leagueseason.ts` written and dry-run
-  verified. Script is NOT run against dev (already migrated). Verification against
-  a disposable Docker Mongo is deferred to Stage E.
-- **Stage B**: Not started. Start here.
-- **Stage C**: Not started.
-- **Stage D**: Dev DB already has the 2026/2027 season created with 56 members
-  carried over. The `create-league-season.ts` ops script and db function still
-  need to be written (so Stage D exists as code, not just as DB state).
-- **Stage E**: Not started.
-- **Stage F**: Not started (blocked on B–E).
+- **Stage A**: Done. `scripts/migrate-league-to-leagueseason.ts` written, idempotency
+  bug fixed (Phase 1 guard now checks for old-style docs with `season` field, not
+  total `leagues` count). Script NOT re-run against dev (already migrated).
+- **Stage B**: Done. All models, DB modules, routers, auth_deps.py updated.
+- **Stage C**: Done (mechanical renames). Manual click-through not yet confirmed —
+  required before Stage F.
+- **Stage D**: Done. `create_league_season()` db function, `create-league-season.ts`
+  ops script, and `POST /api/admin/create-season` route exist. Dev DB has the
+  2026/2027 season (56 members), created before the ops script was written — ops
+  script has not been run in its final form to confirm end-to-end.
+- **Stage E**: Done. All tests green (68/68).
+  - `test_game_updater_live_mongo.py` updated ✅
+  - `test_live_mongo_smoke.py` updated ✅
+  - `test_league_seasons.py` added (carryover logic + old season queryable) ✅
+  - `test_migration_script.py` added (execute/dry-run/idempotent against Docker Mongo) ✅
+  - `lib/__tests__/scoring.test.ts` moot (CR-108 deleted it) ✅
+- **Stage F**: Not started (blocked on C manual walkthrough + D ops script verification).
 
 ## Stage A — Schema & migration script (dev)
 

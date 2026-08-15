@@ -147,12 +147,12 @@ async function phaseZeroPreflight(db: Db, execute: boolean) {
 async function phaseOneCreateLeagueSeasons(db: Db, execute: boolean): Promise<Map<string, ObjectId>> {
   section('Phase 1 — leagues → league_seasons + parent League docs')
 
-  // Skip if already done (idempotency)
+  // Skip if already done (idempotency): no old-style league docs (those with a `season` field) remain
   const existingSeasonCount = await db.collection('league_seasons').countDocuments().catch(() => 0)
-  const remainingLeagueCount = await db.collection('leagues').countDocuments()
+  const oldStyleLeagueCount = await db.collection('leagues').countDocuments({ season: { $exists: true } })
 
-  if (existingSeasonCount > 0 && remainingLeagueCount === 0) {
-    log('league_seasons already populated and leagues is empty — Phase 1 appears complete. Skipping.')
+  if (existingSeasonCount > 0 && oldStyleLeagueCount === 0) {
+    log('No old-style league docs remain and league_seasons already populated — Phase 1 appears complete. Skipping.')
     // Still need to return the mapping for downstream phases
     const parentMap = new Map<string, ObjectId>()
     const seasons = await db.collection('league_seasons').find({}).toArray()
