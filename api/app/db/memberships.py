@@ -14,7 +14,7 @@ from bson import ObjectId
 from app.db.league_seasons import get_league_season_by_id
 from app.db.mongodb import get_database, Collections
 from app.db._shape import flatten_league_season, to_iso
-from app.models.league import LeagueMembership, LeagueMembershipWithUserDetails, UserSummary
+from app.models.league import InnerCircleMember, LeagueMembership, LeagueMembershipWithUserDetails, UserSummary
 
 _UNSET = object()
 
@@ -73,6 +73,7 @@ async def create_league_membership(
         "isPaid": False,
         "status": "active",
         "joinedAt": datetime.now(timezone.utc),
+        "innerCircleUserIds": [],
     })
 
     await db[Collections.LEAGUE_SEASONS].update_one(
@@ -227,4 +228,63 @@ async def remove_member_from_league(league_season_id: str, member_id: str, remov
 
     await db[Collections.LEAGUE_SEASONS].update_one(
         {"_id": ObjectId(league_season_id)}, {"$inc": {"memberCount": -1}}
+    )
+
+
+async def get_inner_circle(league_season_id: str, member_id: str) -> list[InnerCircleMember]:
+    """NEW, no TS twin. Resolves the caller's stored innerCircleUserIds
+    against this season's currently-active members. A userId that's gone
+    inactive since being added (removed mid-season) is silently dropped
+    here rather than shown as a ghost entry -- the stored array itself is
+    only pruned at season rollover (see create_league_season)."""
+    db = get_database()
+    own_doc = await db[Collections.LEAGUE_MEMBERSHIPS].find_one({
+        "_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id),
+    })
+    if not own_doc:
+        return []
+
+    circle_ids = {ObjectId(uid) for uid in own_doc.get("innerCircleUserIds", [])}
+    if not circle_ids:
+        return []
+
+    members = await get_league_members_with_user_data(league_season_id)
+    result = []
+    for m in members:
+        if m.status == "active" and ObjectId(m.user) in circle_ids:
+            display_name = f"{m.teamName} ({m.userDetails.name})" if m.userDetails.name else m.teamName
+            result.append(InnerCircleMember(userId=m.user, name=display_name))
+    return result
+
+
+async def add_to_inner_circle(league_season_id: str, member_id: str, target_user_id: str) -> None:
+    """NEW, no TS twin. Caller-ownership of `member_id` is enforced by the
+    router before this is called."""
+    db = get_database()
+    own_doc = await db[Collections.LEAGUE_MEMBERSHIPS].find_one({
+        "_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id),
+    })
+    if not own_doc:
+        raise ValueError("Member not found")
+    if str(own_doc["userId"]) == target_user_id:
+        raise ValueError("You're always included in your own inner circle -- no need to add yourself")
+
+    target_membership = await get_membership_for_user(league_season_id, target_user_id)
+    if not target_membership or target_membership.status != "active":
+        raise ValueError("That person isn't an active member of this league")
+
+    await db[Collections.LEAGUE_MEMBERSHIPS].update_one(
+        {"_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id)},
+        {"$addToSet": {"innerCircleUserIds": ObjectId(target_user_id)}},
+    )
+
+
+async def remove_from_inner_circle(league_season_id: str, member_id: str, target_user_id: str) -> None:
+    """NEW, no TS twin. Caller-ownership of `member_id` is enforced by the
+    router before this is called. Silently no-ops if target_user_id wasn't
+    in the circle."""
+    db = get_database()
+    await db[Collections.LEAGUE_MEMBERSHIPS].update_one(
+        {"_id": ObjectId(member_id), "leagueSeasonId": ObjectId(league_season_id)},
+        {"$pull": {"innerCircleUserIds": ObjectId(target_user_id)}},
     )

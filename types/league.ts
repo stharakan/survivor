@@ -43,6 +43,13 @@ export type LeagueMembership = {
 // (app/admin/requests/[id], the admin "Requests" tab, and the "Ask to Join"
 // button on app/leagues) rather than ported as dead weight.
 
+// NEW, no lib/db.ts twin -- self-service "Inner Circle" scoreboard filter
+// (personal, per-membership; see api/app/models/league.py's InnerCircleMember).
+export type InnerCircleMember = {
+  userId: string
+  name: string
+}
+
 export type SportsLeagueOption = {
   id: string
   name: string

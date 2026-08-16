@@ -15,13 +15,16 @@ from app.core.auth_deps import (
 )
 from app.core.responses import ApiError, ok
 from app.db.memberships import (
+    add_to_inner_circle,
+    get_inner_circle,
     get_league_member,
     get_league_members_with_user_data,
+    remove_from_inner_circle,
     remove_member_from_league,
     update_member_status,
 )
 from app.db.mongodb import get_database
-from app.models.requests import UpdateMemberRequest
+from app.models.requests import AddInnerCircleMemberRequest, UpdateMemberRequest
 
 router = APIRouter(prefix="/api/league-seasons/{league_season_id}/members", tags=["members"])
 
@@ -137,3 +140,54 @@ async def delete_member(league_season_id: str, member_id: str, request: Request)
         },
         message="Member removed successfully",
     )
+
+
+async def _require_own_membership(league_season_id: str, member_id: str, request: Request):
+    """NEW, no TS twin. Shared guard for the inner-circle routes below --
+    unlike patch_member/delete_member (admin-editable fields), an inner
+    circle is personal: only the member who owns it may ever read or edit
+    it, admin or not."""
+    auth_user = await verify_auth_token(request)
+    existing_member = await get_league_member(league_season_id, member_id)
+    if not existing_member:
+        raise ApiError("Member not found", 404)
+    if existing_member.user != auth_user.user_id:
+        raise ApiError("You can only view or edit your own inner circle", 403)
+    return existing_member
+
+
+@router.get("/{member_id}/inner-circle")
+async def get_member_inner_circle(league_season_id: str, member_id: str, request: Request) -> dict:
+    """NEW, no TS twin. Self-scoped only -- see _require_own_membership."""
+    await _require_own_membership(league_season_id, member_id, request)
+    circle = await get_inner_circle(league_season_id, member_id)
+    return ok([c.model_dump() for c in circle])
+
+
+@router.post("/{member_id}/inner-circle")
+async def add_member_inner_circle(
+    league_season_id: str, member_id: str, body: AddInnerCircleMemberRequest, request: Request
+) -> dict:
+    """NEW, no TS twin. Self-scoped only -- see _require_own_membership."""
+    await _require_own_membership(league_season_id, member_id, request)
+
+    try:
+        await add_to_inner_circle(league_season_id, member_id, body.userId)
+    except ValueError as e:
+        raise ApiError(str(e), 400)
+
+    circle = await get_inner_circle(league_season_id, member_id)
+    return ok([c.model_dump() for c in circle], message="Added to inner circle")
+
+
+@router.delete("/{member_id}/inner-circle/{user_id}")
+async def remove_member_inner_circle(
+    league_season_id: str, member_id: str, user_id: str, request: Request
+) -> dict:
+    """NEW, no TS twin. Self-scoped only -- see _require_own_membership."""
+    await _require_own_membership(league_season_id, member_id, request)
+
+    await remove_from_inner_circle(league_season_id, member_id, user_id)
+
+    circle = await get_inner_circle(league_season_id, member_id)
+    return ok([c.model_dump() for c in circle], message="Removed from inner circle")

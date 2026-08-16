@@ -4,7 +4,7 @@ import type { PlayerProfile } from "@/types/player-profile"
 import type { Pick } from "@/types/pick"
 import type { Team } from "@/types/team"
 import type { Game } from "@/types/game"
-import type { League, LeagueMembership } from "@/types/league"
+import type { League, LeagueMembership, InnerCircleMember } from "@/types/league"
 import type { ApiResponse } from "@/lib/api-types"
 import type { SeasonSummary } from "@/types/season-summary"
 
@@ -157,6 +157,33 @@ export async function updateMemberStatus(
 
 export async function removeMemberFromLeague(leagueId: string, memberId: string): Promise<void> {
   return apiRequest(`/league-seasons/${leagueId}/members/${memberId}`, {
+    method: 'DELETE',
+  })
+}
+
+// "Inner Circle" scoreboard filter -- self-scoped only (memberId must be the
+// caller's own membership; enforced server-side).
+export async function getInnerCircle(leagueId: string, memberId: string): Promise<InnerCircleMember[]> {
+  return apiRequest(`/league-seasons/${leagueId}/members/${memberId}/inner-circle`)
+}
+
+export async function addToInnerCircle(
+  leagueId: string,
+  memberId: string,
+  userId: string,
+): Promise<InnerCircleMember[]> {
+  return apiRequest(`/league-seasons/${leagueId}/members/${memberId}/inner-circle`, {
+    method: 'POST',
+    body: JSON.stringify({ userId }),
+  })
+}
+
+export async function removeFromInnerCircle(
+  leagueId: string,
+  memberId: string,
+  userId: string,
+): Promise<InnerCircleMember[]> {
+  return apiRequest(`/league-seasons/${leagueId}/members/${memberId}/inner-circle/${userId}`, {
     method: 'DELETE',
   })
 }

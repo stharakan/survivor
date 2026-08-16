@@ -90,6 +90,12 @@ class GenerateResetLinkRequest(BaseModel):
     leagueSeasonId: str  # was leagueId
 
 
+class AddInnerCircleMemberRequest(BaseModel):
+    """Body for POST .../members/{member_id}/inner-circle (NEW, no TS twin)."""
+
+    userId: str
+
+
 class CreateLeagueSeasonRequest(BaseModel):
     """Body for POST /api/admin/create-season (SUR-010 Stage D)."""
 
