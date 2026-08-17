@@ -248,7 +248,18 @@ function AdminPortalContent() {
   const handleCopyLink = async (token: string) => {
     const inviteUrl = `${window.location.origin}/invite?token=${token}`
     try {
-      await navigator.clipboard.writeText(inviteUrl)
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(inviteUrl)
+      } else {
+        const ta = document.createElement('textarea')
+        ta.value = inviteUrl
+        ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px'
+        document.body.appendChild(ta)
+        ta.focus()
+        ta.select()
+        document.execCommand('copy')
+        ta.remove()
+      }
       setSuccess('Invitation link copied to clipboard!')
       setTimeout(() => setSuccess(null), 2000)
     } catch (error) {

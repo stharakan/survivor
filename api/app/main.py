@@ -13,7 +13,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.staticfiles import StaticFiles
 
 from app.core.responses import register_exception_handlers
-from app.core.security_headers import SecurityHeadersMiddleware
+from app.core.security_headers import CanonicalRedirectMiddleware, SecurityHeadersMiddleware
 from app.db.mongodb import close_client, get_client
 from app.routers import (
     admin_scoring,
@@ -58,6 +58,7 @@ register_exception_handlers(app)
 # app regardless of registration order relative to routes/mounts, but
 # keeping it first here mirrors the "runs on everything" intent).
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CanonicalRedirectMiddleware)
 
 # Rank 1 -- auth
 app.include_router(auth.router)
