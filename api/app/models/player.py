@@ -12,3 +12,4 @@ class Player(BaseModel):
     strikes: int
     rank: int
     weeklyPick: Optional[str] = None
+    isAI: bool = False  # NEW, no TS twin -- see User.isAI; drives the scoreboard's Bot badge

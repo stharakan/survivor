@@ -93,6 +93,7 @@ class UserSummary(BaseModel):
     id: str
     email: str
     name: Optional[str] = None
+    isAI: bool = False  # NEW, no TS twin -- see User.isAI
 
 
 class LeagueMembershipWithUserDetails(LeagueMembership):

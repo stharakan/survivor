@@ -14,7 +14,7 @@ import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
-import { Trophy, UserPlus, X } from "lucide-react"
+import { Trophy, UserPlus, X, Bot } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
@@ -256,7 +256,12 @@ function ScoreboardContent() {
                         {player.rank}
                       </div>
                     </TableCell>
-                    <TableCell>{player.name}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {player.isAI && <Bot className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="AI team" />}
+                        {player.name}
+                      </div>
+                    </TableCell>
                     <TableCell>{getPickDisplay(player)}</TableCell>
                     <TableCell className="text-right">{player.points}</TableCell>
                     <TableCell className="text-right">{player.strikes}</TableCell>

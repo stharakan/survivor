@@ -22,7 +22,7 @@ def _base_player(member, weekly_pick: Optional[str] = None) -> Player:
     display_name = f"{member.teamName} ({member.userDetails.name})" if member.userDetails.name else member.teamName
     return Player(
         id=member.user, name=display_name, points=member.points, strikes=member.strikes,
-        rank=member.rank, weeklyPick=weekly_pick,
+        rank=member.rank, weeklyPick=weekly_pick, isAI=member.userDetails.isAI,
     )
 
 

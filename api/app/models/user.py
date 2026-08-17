@@ -13,3 +13,8 @@ class User(BaseModel):
     email: str
     name: Optional[str] = None
     leagues: Optional[List[LeagueMembership]] = None
+    # NEW, no TS twin -- flags an account as an AI-driven team (see
+    # api/app/db/ai_teams.py). Defaults False for every normal registration;
+    # only ever set True by a deliberate one-off ops update, never via the
+    # public register endpoint.
+    isAI: bool = False

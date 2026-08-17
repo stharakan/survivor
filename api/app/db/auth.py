@@ -39,7 +39,7 @@ async def get_user_by_email(email: str) -> Optional[User]:
     user = await db[Collections.USERS].find_one({"email": email})
     if not user:
         return None
-    return User(id=str(user["_id"]), email=user["email"], name=user.get("name"))
+    return User(id=str(user["_id"]), email=user["email"], name=user.get("name"), isAI=user.get("isAI", False))
 
 
 async def get_user_by_id(user_id: str) -> Optional[User]:
@@ -48,7 +48,7 @@ async def get_user_by_id(user_id: str) -> Optional[User]:
     user = await db[Collections.USERS].find_one({"_id": ObjectId(user_id)})
     if not user:
         return None
-    return User(id=str(user["_id"]), email=user["email"], name=user.get("name"))
+    return User(id=str(user["_id"]), email=user["email"], name=user.get("name"), isAI=user.get("isAI", False))
 
 
 async def verify_password(email: str, password: str) -> Optional[User]:
@@ -62,7 +62,7 @@ async def verify_password(email: str, password: str) -> Optional[User]:
     if not is_valid:
         return None
 
-    return User(id=str(user["_id"]), email=user["email"], name=user.get("name"))
+    return User(id=str(user["_id"]), email=user["email"], name=user.get("name"), isAI=user.get("isAI", False))
 
 
 async def update_user(user_id: str, name=_UNSET) -> Optional[User]:

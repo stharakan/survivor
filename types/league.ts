@@ -50,6 +50,28 @@ export type InnerCircleMember = {
   name: string
 }
 
+// NEW, no lib/db.ts twin -- admin-only "AI Teams" tab (see
+// api/app/db/ai_teams.py's build_ai_prompt).
+export type AIPromptFixture = {
+  gameId: number
+  homeTeam: { id: number; name: string }
+  awayTeam: { id: number; name: string }
+}
+
+export type AIPromptData = {
+  teamName: string
+  week: number
+  strikes: number
+  points: number
+  rank: number
+  totalPlayers: number
+  history: Array<{ week: number; teamName: string; result: string | null }>
+  teamsUsed: Record<string, number>
+  maxedOutTeams: string[]
+  fixtures: AIPromptFixture[]
+  promptText: string
+}
+
 export type SportsLeagueOption = {
   id: string
   name: string

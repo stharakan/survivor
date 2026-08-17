@@ -136,7 +136,9 @@ async def get_league_members_with_user_data(league_season_id: str) -> list[Leagu
         ud = doc["userDetails"]
         result.append(LeagueMembershipWithUserDetails(
             **base.model_dump(),
-            userDetails=UserSummary(id=str(ud["_id"]), email=ud["email"], name=ud.get("name")),
+            userDetails=UserSummary(
+                id=str(ud["_id"]), email=ud["email"], name=ud.get("name"), isAI=ud.get("isAI", False)
+            ),
         ))
     return result
 
