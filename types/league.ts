@@ -43,6 +43,35 @@ export type LeagueMembership = {
 // (app/admin/requests/[id], the admin "Requests" tab, and the "Ask to Join"
 // button on app/leagues) rather than ported as dead weight.
 
+// NEW, no lib/db.ts twin -- self-service "Inner Circle" scoreboard filter
+// (personal, per-membership; see api/app/models/league.py's InnerCircleMember).
+export type InnerCircleMember = {
+  userId: string
+  name: string
+}
+
+// NEW, no lib/db.ts twin -- admin-only "AI Teams" tab (see
+// api/app/db/ai_teams.py's build_ai_prompt).
+export type AIPromptFixture = {
+  gameId: number
+  homeTeam: { id: number; name: string }
+  awayTeam: { id: number; name: string }
+}
+
+export type AIPromptData = {
+  teamName: string
+  week: number
+  strikes: number
+  points: number
+  rank: number
+  totalPlayers: number
+  history: Array<{ week: number; teamName: string; result: string | null }>
+  teamsUsed: Record<string, number>
+  maxedOutTeams: string[]
+  fixtures: AIPromptFixture[]
+  promptText: string
+}
+
 export type SportsLeagueOption = {
   id: string
   name: string

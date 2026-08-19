@@ -93,6 +93,7 @@ class UserSummary(BaseModel):
     id: str
     email: str
     name: Optional[str] = None
+    isAI: bool = False  # NEW, no TS twin -- see User.isAI
 
 
 class LeagueMembershipWithUserDetails(LeagueMembership):
@@ -103,3 +104,15 @@ class LeagueMembershipWithUserDetails(LeagueMembership):
     """
 
     userDetails: UserSummary
+
+
+class InnerCircleMember(BaseModel):
+    """One entry in a member's personal 'Inner Circle' scoreboard filter
+    (NEW, no TS/lib.db.ts twin -- self-service, added post-CR-105). Deliberately
+    not merged into LeagueMembership/LeagueMembershipWithUserDetails: those
+    are broadcast to every league member via GET .../members, and a user's
+    circle is personal, not something to leak to other members via that
+    endpoint. Only exposed via the self-scoped .../inner-circle routes."""
+
+    userId: str
+    name: str

@@ -1,15 +1,20 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getScoreboard, getUserPicks } from "@/lib/api"
+import { getScoreboard, getUserPicks, getInnerCircle, addToInnerCircle, removeFromInnerCircle } from "@/lib/api"
 import type { Player } from "@/types/player"
+import type { InnerCircleMember } from "@/types/league"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Button } from "@/components/ui/button"
-import { Trophy } from "lucide-react"
+import { Switch } from "@/components/ui/switch"
+import { Badge } from "@/components/ui/badge"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Trophy, UserPlus, X, Bot } from "lucide-react"
 import { useRouter } from "next/navigation"
 import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
@@ -17,12 +22,15 @@ import { hasGameweekStarted } from "@/lib/game-utils"
 
 function ScoreboardContent() {
   const { user } = useAuth()
-  const { currentLeague } = useLeague()
+  const { currentLeague, currentMembership } = useLeague()
   const [players, setPlayers] = useState<Player[]>([])
   const [displayWeek, setDisplayWeek] = useState<number>(1)
   const [loading, setLoading] = useState(true)
   const [currentUserHasPick, setCurrentUserHasPick] = useState<boolean>(false)
   const [showLockScreen, setShowLockScreen] = useState<boolean>(false)
+  const [innerCircleOn, setInnerCircleOn] = useState(false)
+  const [circle, setCircle] = useState<InnerCircleMember[]>([])
+  const [addOpen, setAddOpen] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -82,6 +90,45 @@ function ScoreboardContent() {
 
     fetchData()
   }, [user, currentLeague])
+
+  // Independent of the scoreboard/pick-lock fetch above -- the circle is a
+  // personal preference, not part of the scoreboard data itself.
+  useEffect(() => {
+    if (currentLeague && currentMembership) {
+      getInnerCircle(currentLeague.id, currentMembership.id)
+        .then(setCircle)
+        .catch((error) => console.error("Error fetching inner circle:", error))
+    }
+  }, [currentLeague, currentMembership])
+
+  const circleUserIds = useMemo(() => new Set(circle.map((c) => c.userId)), [circle])
+
+  const displayedPlayers = innerCircleOn
+    ? players.filter((p) => p.id === user?.id || circleUserIds.has(p.id))
+    : players
+
+  const availableToAdd = players.filter((p) => p.id !== user?.id && !circleUserIds.has(p.id))
+
+  const handleAddToCircle = async (playerId: string) => {
+    if (!currentLeague || !currentMembership) return
+    try {
+      const updated = await addToInnerCircle(currentLeague.id, currentMembership.id, playerId)
+      setCircle(updated)
+      setAddOpen(false)
+    } catch (error) {
+      console.error("Error adding to inner circle:", error)
+    }
+  }
+
+  const handleRemoveFromCircle = async (userId: string) => {
+    if (!currentLeague || !currentMembership) return
+    try {
+      const updated = await removeFromInnerCircle(currentLeague.id, currentMembership.id, userId)
+      setCircle(updated)
+    } catch (error) {
+      console.error("Error removing from inner circle:", error)
+    }
+  }
 
   const handleRowClick = (playerId: string) => {
     router.push(`/player?id=${playerId}`)
@@ -150,8 +197,20 @@ function ScoreboardContent() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Standings</CardTitle>
-          <CardDescription>Current standings for all players in the league</CardDescription>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <CardTitle>Standings</CardTitle>
+              <CardDescription>
+                {innerCircleOn
+                  ? "Showing only you and your inner circle"
+                  : "Current standings for all players in the league"}
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-sm font-medium">Inner Circle:</span>
+              <Switch checked={innerCircleOn} onCheckedChange={setInnerCircleOn} />
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -185,7 +244,7 @@ function ScoreboardContent() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {players.map((player, index) => (
+                {displayedPlayers.map((player, index) => (
                   <TableRow
                     key={`${player.id}-${index}`}
                     className="border-b-2 border-black cursor-pointer hover:bg-accent/50"
@@ -197,7 +256,12 @@ function ScoreboardContent() {
                         {player.rank}
                       </div>
                     </TableCell>
-                    <TableCell>{player.name}</TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1">
+                        {player.isAI && <Bot className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="AI team" />}
+                        {player.name}
+                      </div>
+                    </TableCell>
                     <TableCell>{getPickDisplay(player)}</TableCell>
                     <TableCell className="text-right">{player.points}</TableCell>
                     <TableCell className="text-right">{player.strikes}</TableCell>
@@ -208,6 +272,62 @@ function ScoreboardContent() {
           )}
         </CardContent>
       </Card>
+
+      {innerCircleOn && !loading && !showLockScreen && !currentLeague?.hideScoreboard && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Manage Inner Circle</CardTitle>
+            <CardDescription>Add or remove people you want to see on your filtered scoreboard</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <Popover open={addOpen} onOpenChange={setAddOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" className="border-2 border-black bg-transparent">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Add people to inner circle
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-0">
+                <Command>
+                  <CommandInput placeholder="Search by team or player name..." />
+                  <CommandList>
+                    <CommandEmpty>No one found.</CommandEmpty>
+                    <CommandGroup>
+                      {availableToAdd.map((player) => (
+                        <CommandItem key={player.id} value={player.name} onSelect={() => handleAddToCircle(player.id)}>
+                          {player.name}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            {circle.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {circle.map((member) => (
+                  <Badge
+                    key={member.userId}
+                    variant="outline"
+                    className="border-2 border-black flex items-center gap-1 pr-1"
+                  >
+                    {member.name}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveFromCircle(member.userId)}
+                      className="ml-1 hover:text-destructive"
+                      aria-label={`Remove ${member.name} from inner circle`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

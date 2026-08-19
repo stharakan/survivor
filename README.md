@@ -124,8 +124,13 @@ MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB_NAME=survivor-league
 ```
 
-FastAPI-specific vars go in `api/.env` (not committed, no auto-loader — source
-it yourself):
+These are picked up automatically: `api/app/core/config.py` and
+`api/app/db/mongodb.py` both call `load_dotenv()` on import (`api/.env` first,
+then the repo-root `.env.local` as a fallback for the shared Mongo vars
+above — real env vars always take precedence over both files). No manual
+`export`/sourcing needed, regardless of which shell you use.
+
+FastAPI-specific vars go in `api/.env` (not committed):
 
 ```env
 JWT_SECRET=...              # falls back to an insecure default if unset, kept for TS parity

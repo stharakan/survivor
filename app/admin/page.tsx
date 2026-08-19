@@ -4,8 +4,8 @@ import { Suspense, useEffect, useState } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
-import { getLeagueMembers, updateMemberStatus, updateLeagueSettings } from "@/lib/api"
-import type { LeagueMembership, SportsLeagueOption } from "@/types/league"
+import { getLeagueMembers, updateMemberStatus, updateLeagueSettings, getAIPrompt, submitAIPick } from "@/lib/api"
+import type { LeagueMembership, SportsLeagueOption, AIPromptData } from "@/types/league"
 import type { User } from "@/types/user"
 import type { InvitationWithLeague } from "@/types/invitation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -28,7 +28,7 @@ import {
   DialogTrigger 
 } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Users, Settings, UserCheck, Mail, Plus, Copy, Trash2, Calendar, CheckCircle, AlertCircle, XCircle, Save, Grid3X3 } from "lucide-react"
+import { Users, Settings, UserCheck, Mail, Plus, Copy, Trash2, Calendar, CheckCircle, AlertCircle, XCircle, Save, Grid3X3, Bot } from "lucide-react"
 import Image from "next/image"
 import { AdminGuard } from "@/components/admin-guard"
 import Link from "next/link"
@@ -87,6 +87,12 @@ function AdminPortalContent() {
   // Shared state
   const [success, setSuccess] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // AI Teams state
+  const [aiPrompts, setAiPrompts] = useState<Record<string, AIPromptData>>({})
+  const [aiPromptLoading, setAiPromptLoading] = useState<Set<string>>(new Set())
+  const [aiSelections, setAiSelections] = useState<Record<string, string>>({}) // memberId -> "gameId:teamId"
+  const [aiSubmitting, setAiSubmitting] = useState<Set<string>>(new Set())
 
   // Helper function to format member display name
   const formatMemberDisplayName = (member: MemberWithUserDetails) => {
@@ -183,6 +189,70 @@ function AdminPortalContent() {
       setError("Failed to update payment status")
     } finally {
       setUpdatingMembers(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(memberId)
+        return newSet
+      })
+    }
+  }
+
+  // AI Teams handlers
+  const loadAIPrompt = async (memberId: string) => {
+    if (!currentLeague) return
+    setAiPromptLoading(prev => new Set(prev).add(memberId))
+    try {
+      const prompt = await getAIPrompt(currentLeague.id, memberId)
+      setAiPrompts(prev => ({ ...prev, [memberId]: prompt }))
+    } catch (error) {
+      console.error("Error loading AI prompt:", error)
+      setError("Failed to load AI prompt")
+    } finally {
+      setAiPromptLoading(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(memberId)
+        return newSet
+      })
+    }
+  }
+
+  const copyAIPrompt = async (memberId: string) => {
+    const prompt = aiPrompts[memberId]
+    if (!prompt) return
+    try {
+      await navigator.clipboard.writeText(prompt.promptText)
+      setSuccess("Prompt copied to clipboard")
+    } catch (error) {
+      console.error("Error copying prompt:", error)
+      setError("Failed to copy prompt")
+    }
+  }
+
+  const handleSubmitAIPick = async (memberId: string) => {
+    if (!currentLeague) return
+    const prompt = aiPrompts[memberId]
+    const selection = aiSelections[memberId]
+    if (!prompt || !selection) return
+
+    const [gameIdStr, teamIdStr] = selection.split(":")
+    setAiSubmitting(prev => new Set(prev).add(memberId))
+    try {
+      await submitAIPick(currentLeague.id, memberId, {
+        gameId: Number(gameIdStr),
+        teamId: Number(teamIdStr),
+        week: prompt.week,
+      })
+      setSuccess("AI pick submitted successfully")
+      setAiSelections(prev => {
+        const { [memberId]: _removed, ...rest } = prev
+        return rest
+      })
+      // Refresh so the history/used-teams reflect the new pick immediately.
+      await loadAIPrompt(memberId)
+    } catch (error) {
+      console.error("Error submitting AI pick:", error)
+      setError(error instanceof Error ? error.message : "Failed to submit AI pick")
+    } finally {
+      setAiSubmitting(prev => {
         const newSet = new Set(prev)
         newSet.delete(memberId)
         return newSet
@@ -326,6 +396,7 @@ function AdminPortalContent() {
   const activeMembers = members.filter((m) => m.status === "active")
   const activeInvitations = invitations.filter(inv => inv.isActive)
   const revokedInvitations = invitations.filter(inv => !inv.isActive)
+  const aiMembers = activeMembers.filter((m) => m.userDetails.isAI)
 
   return (
     <div className="space-y-6">
@@ -367,6 +438,10 @@ function AdminPortalContent() {
               <TabsTrigger value="members" className="justify-start bg-retro-orange/10 data-[state=active]:bg-retro-orange data-[state=active]:text-white">
                 <Users className="h-4 w-4 mr-2" />
                 Members
+              </TabsTrigger>
+              <TabsTrigger value="ai-teams" className="justify-start bg-retro-orange/10 data-[state=active]:bg-retro-orange data-[state=active]:text-white">
+                <Bot className="h-4 w-4 mr-2" />
+                AI Teams
               </TabsTrigger>
               <TabsTrigger value="invitations" className="justify-start bg-retro-orange/10 data-[state=active]:bg-retro-orange data-[state=active]:text-white">
                 <Mail className="h-4 w-4 mr-2" />
@@ -479,6 +554,124 @@ function AdminPortalContent() {
               )}
             </CardContent>
           </Card>
+              </TabsContent>
+
+              <TabsContent value="ai-teams" className="space-y-4 mt-0">
+                <Card className="border-4 border-black">
+                  <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
+                    <CardTitle className="flex items-center gap-2">
+                      <Bot className="h-5 w-5" />
+                      AI Teams
+                    </CardTitle>
+                    <CardDescription className="text-white/80">
+                      Generate this week's prompt for each AI-driven team, paste it into that model,
+                      then enter the team it picks below. Only available for AI-flagged accounts.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="pt-6 space-y-6">
+                    {aiMembers.length === 0 ? (
+                      <div className="text-center py-8">
+                        <p className="text-muted-foreground">No AI-flagged teams in this league.</p>
+                      </div>
+                    ) : (
+                      aiMembers.map((member) => {
+                        const prompt = aiPrompts[member.id]
+                        const isLoadingPrompt = aiPromptLoading.has(member.id)
+                        const isSubmitting = aiSubmitting.has(member.id)
+                        const teamOptions = prompt
+                          ? prompt.fixtures.flatMap((f) => [
+                              { value: `${f.gameId}:${f.homeTeam.id}`, label: `${f.homeTeam.name} (home)` },
+                              { value: `${f.gameId}:${f.awayTeam.id}`, label: `${f.awayTeam.name} (away)` },
+                            ])
+                          : []
+
+                        return (
+                          <Card key={member.id} className="border-2 border-black">
+                            <CardHeader className="pb-3">
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Bot className="h-4 w-4" />
+                                {formatMemberDisplayName(member)}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                              {!prompt ? (
+                                <Button
+                                  variant="outline"
+                                  className="border-2 border-black bg-transparent"
+                                  onClick={() => loadAIPrompt(member.id)}
+                                  disabled={isLoadingPrompt}
+                                >
+                                  {isLoadingPrompt ? "Loading..." : `Generate Week's Prompt`}
+                                </Button>
+                              ) : (
+                                <>
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium">Week {prompt.week} prompt</span>
+                                    <div className="flex gap-2">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-2 border-black bg-transparent"
+                                        onClick={() => copyAIPrompt(member.id)}
+                                      >
+                                        <Copy className="h-3 w-3 mr-1" />
+                                        Copy
+                                      </Button>
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-2 border-black bg-transparent"
+                                        onClick={() => loadAIPrompt(member.id)}
+                                        disabled={isLoadingPrompt}
+                                      >
+                                        {isLoadingPrompt ? "Refreshing..." : "Refresh"}
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  <Textarea
+                                    readOnly
+                                    value={prompt.promptText}
+                                    className="border-2 border-black font-mono text-xs h-64"
+                                  />
+
+                                  <div className="flex items-end gap-2 pt-2 border-t-2 border-black">
+                                    <div className="flex-1">
+                                      <Label htmlFor={`ai-pick-${member.id}`}>Enter this week's pick</Label>
+                                      <Select
+                                        value={aiSelections[member.id] || ""}
+                                        onValueChange={(value) =>
+                                          setAiSelections((prev) => ({ ...prev, [member.id]: value }))
+                                        }
+                                      >
+                                        <SelectTrigger id={`ai-pick-${member.id}`} className="border-2 border-black">
+                                          <SelectValue placeholder="Select the team it picked..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                          {teamOptions.map((opt) => (
+                                            <SelectItem key={opt.value} value={opt.value}>
+                                              {opt.label}
+                                            </SelectItem>
+                                          ))}
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+                                    <Button
+                                      variant="pixel"
+                                      onClick={() => handleSubmitAIPick(member.id)}
+                                      disabled={!aiSelections[member.id] || isSubmitting}
+                                    >
+                                      {isSubmitting ? "Submitting..." : "Submit Pick"}
+                                    </Button>
+                                  </div>
+                                </>
+                              )}
+                            </CardContent>
+                          </Card>
+                        )
+                      })
+                    )}
+                  </CardContent>
+                </Card>
               </TabsContent>
 
               <TabsContent value="invitations" className="space-y-4 mt-0">

@@ -4,9 +4,22 @@ database during the parallel-run/parity-validation phase described in
 CR-105-FINDINGS.md's Context section.
 """
 import os
+from pathlib import Path
 from typing import Optional
 
+from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+
+# Load env files so MONGODB_URI/MONGODB_DB_NAME are present even when this
+# module is imported/used without going through app.main (e.g. a script or a
+# test that calls get_client() directly) -- same loading as
+# app/core/config.py, duplicated here rather than imported to keep db/ from
+# depending on core/. override=False + api/.env before .env.local: real env
+# vars always win, then api/.env, then the repo-root .env.local shared with
+# the Next.js app (see root CLAUDE.md). No-op if neither file exists.
+_API_DIR = Path(__file__).resolve().parents[2]
+load_dotenv(_API_DIR / ".env", override=False)
+load_dotenv(_API_DIR.parent / ".env.local", override=False)
 
 _client: Optional[AsyncIOMotorClient] = None
 

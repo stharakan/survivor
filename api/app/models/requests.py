@@ -90,6 +90,20 @@ class GenerateResetLinkRequest(BaseModel):
     leagueSeasonId: str  # was leagueId
 
 
+class AddInnerCircleMemberRequest(BaseModel):
+    """Body for POST .../members/{member_id}/inner-circle (NEW, no TS twin)."""
+
+    userId: str
+
+
+class SubmitAIPickRequest(BaseModel):
+    """Body for POST .../members/{member_id}/ai-pick (NEW, no TS twin)."""
+
+    gameId: int
+    teamId: int
+    week: int
+
+
 class CreateLeagueSeasonRequest(BaseModel):
     """Body for POST /api/admin/create-season (SUR-010 Stage D)."""
 

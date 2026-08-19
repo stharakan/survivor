@@ -5,4 +5,6 @@ export type Player = {
   strikes: number
   rank: number
   weeklyPick?: string
+  // NEW, no lib/db.ts twin -- drives the scoreboard's Bot badge.
+  isAI?: boolean
 }

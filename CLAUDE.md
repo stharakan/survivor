@@ -163,8 +163,13 @@ same Mongo vars:
 MONGODB_URI=mongodb://localhost:27017
 MONGODB_DB_NAME=survivor-league
 ```
-FastAPI-specific (`api/app/core/config.py`), put in `api/.env` (not committed, no
-loader wired into `app/main.py` — source it yourself):
+`api/app/core/config.py` and `api/app/db/mongodb.py` both call `load_dotenv()`
+on import, loading `api/.env` then falling back to the repo-root `.env.local`
+(each with `override=False`, so real env vars — Heroku config vars, CI
+secrets, an inline `MONGODB_URI=... uv run ...` — always win). So the Mongo
+vars above are picked up automatically from `.env.local`; no extra step
+needed for those. FastAPI-specific vars (put these in `api/.env`, not
+committed):
 ```
 JWT_SECRET=...              # falls back to 'fallback-secret' if unset — flagged insecure default, kept for parity
 SCORING_API_KEY=...         # X-API-Key for POST /admin/recompute-scores, /admin/update-game-scores

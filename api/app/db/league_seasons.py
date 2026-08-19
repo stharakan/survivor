@@ -93,7 +93,21 @@ async def get_available_league_seasons(user_id: str) -> list[League]:
             "foreignField": "leagueSeasonId",
             "as": "memberships",
         }},
-        {"$addFields": {"memberCount": {"$size": "$memberships"}}},
+        # memberCount reflects active players only -- a removed member
+        # (isActive: False, see memberships.py's remove_member_from_league)
+        # still has a membership doc for history/stats, so an unfiltered
+        # $size here would double-count them back in after removal.
+        {"$addFields": {
+            "memberCount": {
+                "$size": {
+                    "$filter": {
+                        "input": "$memberships",
+                        "as": "m",
+                        "cond": {"$eq": ["$$m.isActive", True]},
+                    }
+                }
+            }
+        }},
     ]).to_list(length=None)
     return [flatten_league_season(d, d["parent"]) for d in docs]
 
@@ -203,6 +217,10 @@ async def create_league_season(league_id: str, new_season: str) -> League:
         {"leagueSeasonId": outgoing_season_id, "status": "active"}
     ).to_list(length=None) if outgoing_season_id else []
 
+    # Renewing members only -- used to prune innerCircleUserIds below so a
+    # circle never carries a reference to someone who didn't renew.
+    renewing_user_ids = {m["userId"] for m in active_members}
+
     if active_members:
         await db[Collections.LEAGUE_MEMBERSHIPS].insert_many([
             {
@@ -219,6 +237,14 @@ async def create_league_season(league_id: str, new_season: str) -> League:
                 "isActive": True,
                 "status": "active",
                 "joinedAt": now,
+                # Carry the inner circle forward, but drop anyone who didn't
+                # renew -- otherwise a stale reference to a departed member
+                # would sit in the array with nothing left to ever prune it
+                # (mid-season removals are only hidden from display, not
+                # pruned from the array itself; see get_inner_circle).
+                "innerCircleUserIds": [
+                    uid for uid in m.get("innerCircleUserIds", []) if uid in renewing_user_ids
+                ],
             }
             for m in active_members
         ])

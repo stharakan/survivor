@@ -5,4 +5,6 @@ export type User = {
   email: string
   name?: string
   leagues?: LeagueMembership[]
+  // NEW, no lib/db.ts twin -- flags an account as an AI-driven team.
+  isAI?: boolean
 }

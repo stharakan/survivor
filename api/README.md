@@ -30,8 +30,14 @@ Reuses the same Mongo env vars as the Next.js app (see the root `CLAUDE.md`):
     MONGODB_URI=mongodb://localhost:27017
     MONGODB_DB_NAME=survivor-league
 
-Plus FastAPI-specific vars (put these in `api/.env`, not committed -- no
-loader is wired into `app/main.py`, source it yourself):
+These are picked up automatically -- `app/core/config.py` and
+`app/db/mongodb.py` both call `load_dotenv()` on import, loading `api/.env`
+first and then falling back to the repo-root `.env.local` (each with
+`override=False`, so real env vars -- Heroku config vars, CI secrets, an
+inline `MONGODB_URI=... uv run ...` -- always win over either file). No
+`export`/sourcing step needed, in bash or PowerShell.
+
+Plus FastAPI-specific vars (put these in `api/.env`, not committed):
 
     JWT_SECRET=...             # falls back to 'fallback-secret' if unset -- flagged
                                 # insecure default, kept for parity with the TS routes
