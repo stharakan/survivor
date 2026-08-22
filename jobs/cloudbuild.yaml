@@ -1,0 +1,11 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - jobs/Dockerfile
+      - -t
+      - us-central1-docker.pkg.dev/$PROJECT_ID/survivor-jobs/game-updater:latest
+      - .
+images:
+  - us-central1-docker.pkg.dev/$PROJECT_ID/survivor-jobs/game-updater:latest

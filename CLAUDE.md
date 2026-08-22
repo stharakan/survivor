@@ -9,7 +9,7 @@ pixel-art aesthetic. Users join one or more leagues (each tied to a sports leagu
 EPL, NFL, NBA), pick one team per week, and try to survive as long as possible; each
 team can be picked at most twice per season per league.
 
-## Architecture: two runtimes, one dyno
+## Architecture: two runtimes, one dyno — plus a Cloud Run Job
 
 This app is mid-migration (CR-105/CR-106) from a Next.js-does-everything app to a
 split architecture:
@@ -18,12 +18,17 @@ split architecture:
   (`next.config.mjs`) into a static `out/` directory. There is **no Node server in
   production** — no Route Handlers, no middleware, no `next/image` optimization.
   `app/api/*` route handlers have been deleted entirely.
-- **Backend** — a FastAPI app under `api/app/` is now the *only* backend. It owns
-  all HTTP routes (`api/app/routers/`), MongoDB access (via Motor), JWT
-  issuance/verification, and scoring. In production a single Heroku dyno runs
-  `uvicorn`, which serves `/api/*` from the FastAPI routers and falls back to
-  serving `out/`'s static files for everything else (`api/app/main.py`, mounted
+- **Backend** — a FastAPI app under `api/app/` is now the *only* HTTP backend. It
+  owns all HTTP routes (`api/app/routers/`), MongoDB access (via Motor), JWT
+  issuance/verification, and scoring recomputation. In production a single Heroku
+  dyno runs `uvicorn`, which serves `/api/*` from the FastAPI routers and falls back
+  to serving `out/`'s static files for everything else (`api/app/main.py`, mounted
   last so routers get first crack at `/api/*`).
+- **Game-score updater** — a separate Google Cloud Run Job (`jobs/`) calls
+  `api/app/db/game_updater.py` directly (no HTTP hop, no Heroku 30 s timeout).
+  It is triggered by Cloud Scheduler (`game-updater-schedule`) every 15 minutes.
+  GCP project: `survivor-473803`, region `us-central1`. **Heroku is not involved
+  in game-score fetching or pick scoring** — those run entirely on GCP.
 - Locally you still run `npm run dev` (Next dev server, calls `/api/*` on
   whatever origin — proxy/CORS as needed) and `uvicorn` separately; only the
   production build collapses them onto one origin/dyno.
@@ -136,6 +141,9 @@ lib/                    api-client.ts (frontend->API), game-utils.ts
 types/                  Shared TS types — each has a Pydantic counterpart under api/app/models/
 scripts/                Node/tsx ops scripts (seeding, backfills, prod->dev clone)
 test-fixtures/          game-utils-golden.json — shared TS/Python parity fixture
+jobs/                   Google Cloud Run Job (game-score updater). update_game_scores.py
+                        is the entrypoint; Dockerfile + cloudbuild.yaml handle build/deploy.
+                        Triggered every 15 min by Cloud Scheduler. See jobs/README.md.
 
 api/app/
   main.py               FastAPI app, router registration, static-file fallback mount
@@ -175,10 +183,12 @@ JWT_SECRET=...              # falls back to 'fallback-secret' if unset — flagg
 SCORING_API_KEY=...         # X-API-Key for POST /admin/recompute-scores, /admin/update-game-scores
 NEXTAUTH_URL=...            # used to build password-reset magic links
 ```
-`app/db/game_updater.py` additionally reads
-`FOOTBALLDATA_API_KEY`, `FOOTBALLDATA_API_URL`, `FOOTBALLDATA_COMPETITION_CODE`,
+The Cloud Run Job (`jobs/`) additionally needs `FOOTBALLDATA_API_KEY`,
+`FOOTBALLDATA_API_URL`, `FOOTBALLDATA_COMPETITION_CODE`,
 `FOOTBALLDATA_REQUEST_DELAY`, `CURRENT_SEASON`, `BULK_QUERY_DAYS_BACK`,
-`BULK_QUERY_DAYS_FORWARD`, `EXCLUDE_SEASONS`.
+`BULK_QUERY_DAYS_FORWARD`, `EXCLUDE_SEASONS` — these are set via
+`--set-env-vars` / `--set-secrets` on the Cloud Run Job, not on Heroku. See
+`jobs/README.md` for the full env-var table.
 
 ## Ticket Workflow
 
