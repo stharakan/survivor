@@ -1,0 +1,14 @@
+# Everything by default; the Dockerfile explicitly opts in.
+*
+!pyproject.toml
+!uv.lock
+!.python-version
+!api/
+!jobs/
+# Exclude test/dev-only paths that would bloat the image or leak secrets.
+**/__pycache__/
+**/*.pyc
+api/tests/
+.env
+.env.local
+.env.prod
