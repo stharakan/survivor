@@ -2,6 +2,7 @@
 
 **Ticket ID**: CR-109
 **Title**: Replace HTTP-triggered game updater with a self-contained Cloud Run Job
+**Status**: Done — implemented 2026-08-22
 **Type**: Infrastructure / Reliability
 **Priority**: High — the current updater has been silently broken in production;
 weekly-state fields on the 2026/2027 `league_seasons` document are null and

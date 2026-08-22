@@ -36,7 +36,7 @@ strategic depth to the game.
 - **Responsive Design**: works on desktop and mobile
 - **Dark/Light Mode**: theme switching
 
-## Architecture: two runtimes, one dyno
+## Architecture: two runtimes, one dyno — plus a Cloud Run Job
 
 This app is mid-migration (see `tickets/done/CR-105*.md`, `tickets/done/CR-106*.md`)
 from a Next.js-does-everything app to a split architecture:
@@ -45,12 +45,17 @@ from a Next.js-does-everything app to a split architecture:
   (`next.config.mjs`) into a static `out/` directory. There is **no Node
   server in production** — no Route Handlers, no middleware, no `next/image`
   optimization. `app/api/*` route handlers have been removed entirely.
-- **Backend** — a FastAPI app under `api/app/` is the *only* backend. It owns
-  all HTTP routes (`api/app/routers/`), MongoDB access (via Motor), JWT
-  issuance/verification, and scoring.
-- **Production**: a single Heroku dyno runs `uvicorn` (see `Procfile`), which
+- **Backend** — a FastAPI app under `api/app/` is the *only* HTTP backend. It
+  owns all HTTP routes (`api/app/routers/`), MongoDB access (via Motor), JWT
+  issuance/verification, and scoring recomputation.
+- **Production (Heroku)**: a single dyno runs `uvicorn` (see `Procfile`), which
   serves `/api/*` from the FastAPI routers and falls back to serving `out/`'s
   static files for everything else (`api/app/main.py`).
+- **Game-score updating (GCP)**: a Google Cloud Run Job (`jobs/`) runs
+  `api/app/db/game_updater.py` directly, triggered by Cloud Scheduler every
+  15 minutes. **Heroku is not involved in fetching game scores or computing
+  picks** — that runs entirely on GCP (project `survivor-473803`,
+  region `us-central1`). See `jobs/README.md`.
 - **Local development**: run the Next.js dev server and `uvicorn` separately
   (see below) — they aren't collapsed onto one origin/dyno until the
   production build.
@@ -74,7 +79,7 @@ alongside the code.
 - **State Management**: React Context for auth and league (`hooks/use-auth.tsx`, `hooks/use-league.tsx`)
 - **Backend**: FastAPI (Python), Motor (async MongoDB driver), Pydantic, `python-jose` (JWT)
 - **Database**: MongoDB (Atlas in production)
-- **Hosting**: single Heroku dyno running `uvicorn`, serving both the API and the static frontend build
+- **Hosting**: single Heroku dyno running `uvicorn`, serving both the API and the static frontend build; game-score updating runs as a Google Cloud Run Job (GCP project `survivor-473803`)
 
 ## Application Flow
 
@@ -97,6 +102,7 @@ lib/                    api-client.ts (frontend -> API), game-utils.ts
 types/                  Shared TS types -- each has a Pydantic counterpart under api/app/models/
 scripts/                Node/tsx ops scripts (seeding, backfills, prod->dev clone)
 test-fixtures/          game-utils-golden.json -- shared TS/Python parity fixture
+jobs/                   Google Cloud Run Job (game-score updater). See jobs/README.md.
 
 api/app/
   main.py               FastAPI app, router registration, static-file fallback mount
@@ -138,11 +144,12 @@ SCORING_API_KEY=...         # X-API-Key for POST /api/admin/recompute-scores, /a
 NEXTAUTH_URL=...            # used to build password-reset magic links
 ```
 
-`app/db/game_updater.py` additionally
-reads `FOOTBALLDATA_API_KEY`, `FOOTBALLDATA_API_URL`,
-`FOOTBALLDATA_COMPETITION_CODE`, `FOOTBALLDATA_REQUEST_DELAY`,
-`CURRENT_SEASON`, `BULK_QUERY_DAYS_BACK`, `BULK_QUERY_DAYS_FORWARD`,
-`EXCLUDE_SEASONS`.
+The Cloud Run Job (`jobs/`) additionally needs `FOOTBALLDATA_API_KEY`,
+`FOOTBALLDATA_API_URL`, `FOOTBALLDATA_COMPETITION_CODE`,
+`FOOTBALLDATA_REQUEST_DELAY`, `CURRENT_SEASON`, `BULK_QUERY_DAYS_BACK`,
+`BULK_QUERY_DAYS_FORWARD`, `EXCLUDE_SEASONS`. These are set via
+`--set-env-vars` / `--set-secrets` on the Cloud Run Job — not on Heroku.
+See `jobs/README.md` for the full table.
 
 ## Local Development Setup
 
@@ -201,7 +208,9 @@ implementations of the same pick-lock/game-status rules, both tested against
 `test-fixtures/game-utils-golden.json`. If you change that logic in one
 language, update the fixture and verify both suites still pass.
 
-## Production Deployment (Heroku)
+## Production Deployment
+
+### Heroku (web + API)
 
 A single dyno runs `uvicorn` (see `Procfile`), which serves `/api/*` from
 FastAPI and falls back to the static `out/` build for everything else — there
@@ -221,6 +230,29 @@ is no separate Node server in production.
 
 Useful commands: `heroku config`, `heroku config:set KEY=value`,
 `heroku logs --tail`, `heroku restart`, `heroku run <command>`.
+
+### Google Cloud Run Job (game-score updater)
+
+Game scores are fetched and picks are scored by a Cloud Run Job — **not by
+Heroku**. The job runs `jobs/update_game_scores.py`, which calls
+`api/app/db/game_updater.py` directly. Cloud Scheduler triggers it every
+15 minutes (GCP project `survivor-473803`, region `us-central1`).
+
+To rebuild and redeploy the job after changing `api/app/db/game_updater.py`
+or anything it imports:
+
+```bash
+gcloud builds submit --config jobs/cloudbuild.yaml .
+gcloud run jobs deploy game-updater \
+  --image us-central1-docker.pkg.dev/survivor-473803/survivor-jobs/game-updater:latest \
+  --region us-central1 \
+  --task-timeout 10m --max-retries 1 \
+  --set-env-vars MONGODB_DB_NAME=survivor-league,CURRENT_SEASON=2026 \
+  --set-secrets MONGODB_URI=mongodb-uri:latest,FOOTBALLDATA_API_KEY=footballdata-api-key:latest
+```
+
+For full env-var details, rollback instructions, and one-time setup see
+`jobs/README.md`.
 
 ## Ops Scripts
 
