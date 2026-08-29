@@ -160,7 +160,15 @@ export function getTeamSelectionClasses(
   isTeamUsed: boolean = false,
   isPicksLocked: boolean = false
 ): string {
-  const baseClasses = "flex flex-col items-center p-4 rounded-none border-2 transition-colors"
+  // w-full + min-h so every team box fills its grid column and matches
+  // height regardless of team name length (SUR-* mobile make-picks polish) --
+  // otherwise a box sized to "Arsenal" looks nothing like one sized to
+  // "Manchester United", and the VS/score column drifts off-center.
+  // min-w-0 is load-bearing: grid items default to min-width:auto (their
+  // content's width), which lets a long name like "Coventry City" force its
+  // track wider than the 1fr split regardless of w-full -- min-w-0 is what
+  // actually lets the box shrink so the name's `truncate` span can kick in.
+  const baseClasses = "flex w-full min-w-0 min-h-[8.5rem] flex-col items-center justify-center p-4 rounded-none border-2 transition-colors"
   const isDisabled = isGameDisabled(game)
   
   if (isPicksLocked) {

@@ -12,10 +12,16 @@ import { ModeToggle } from "./mode-toggle"
 import Image from "next/image"
 
 export default function Navbar() {
-  const pathname = usePathname()
+  const rawPathname = usePathname()
   const { user, logout } = useAuth()
   const { currentLeague, isCurrentUserAdmin, clearLeague } = useLeague()
   const [open, setOpen] = useState(false)
+
+  // `trailingSlash: true` (next.config.mjs) means usePathname() can return
+  // "/make-picks/" instead of "/make-picks" -- strip it before comparing so
+  // route.active (and the mobile current-page label below) still matches.
+  const pathname =
+    rawPathname.length > 1 && rawPathname.endsWith("/") ? rawPathname.slice(0, -1) : rawPathname
 
   const routes = [
     {
@@ -68,7 +74,7 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-50 w-full border-b-4 border-black bg-retro-orange dark:bg-[#121212] backdrop-blur">
-      <div className="container flex h-20 items-center justify-between px-2 sm:px-4">
+      <div className="container relative flex h-20 items-center justify-between px-2 sm:px-4">
         <div className="flex items-center">
           <div onClick={handleLogoClick} className={user && currentLeague ? "cursor-pointer" : ""}>
             <div className="relative flex flex-col items-center">
@@ -93,6 +99,18 @@ export default function Navbar() {
               ))}
           </nav>
         </div>
+
+        {/* Mobile-only current-page label: the full nav (which already
+            highlights the active route) is hidden below md, so without
+            this the collapsed header gives no indication of which page
+            you're on. Absolutely positioned (rather than inline next to the
+            logo) so it's centered on the whole bar, not just the leftover
+            space between the logo and the right-side controls. */}
+        {user && currentLeague && (
+          <span className="md:hidden absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-sm font-heading text-white truncate max-w-[40vw] pointer-events-none">
+            {routes.find((route) => route.active)?.label}
+          </span>
+        )}
 
         <div className="flex items-center gap-2">
           <ModeToggle />
