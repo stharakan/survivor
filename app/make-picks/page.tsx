@@ -305,7 +305,7 @@ function MakePicksContent() {
     const isAwaySelected = selectedTeam === game.awayTeam.id && selectedGameId === game.id
 
     return (
-      <Card key={game.id} className={getGameCardClasses(game)}>
+      <Card key={game.id} className={getGameCardClasses(game, false, picksLocked)}>
         <CardHeader className="pb-2">
           {gameStatus === "postponed" && (
             <div className="flex justify-end">
