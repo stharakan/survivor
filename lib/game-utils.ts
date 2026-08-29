@@ -171,16 +171,21 @@ export function getTeamSelectionClasses(
   const baseClasses = "flex w-full min-w-0 min-h-[8.5rem] flex-col items-center justify-center p-4 rounded-none border-2 transition-colors"
   const isDisabled = isGameDisabled(game)
   
+  // These states used to draw a visible border-gray/red box around the team
+  // once it became unpickable (locked/disabled/used) -- inconsistent since
+  // that box only shows up once a gameweek starts, making the page look
+  // different week to week. Keep the background tint as the signal and stay
+  // border-transparent like the normal, still-pickable state.
   if (isPicksLocked) {
-    return `${baseClasses} border-gray-400 cursor-not-allowed bg-gray-100 dark:bg-gray-800 opacity-60`
+    return `${baseClasses} border-transparent cursor-not-allowed bg-gray-100 dark:bg-gray-800 opacity-60`
   }
-  
+
   if (isDisabled) {
-    return `${baseClasses} border-gray-300 cursor-not-allowed bg-gray-50 dark:bg-gray-900/20`
+    return `${baseClasses} border-transparent cursor-not-allowed bg-gray-50 dark:bg-gray-900/20`
   }
-  
+
   if (isTeamUsed) {
-    return `${baseClasses} border-red-300 bg-red-50 dark:bg-red-900/20 cursor-not-allowed`
+    return `${baseClasses} border-transparent bg-red-50 dark:bg-red-900/20 cursor-not-allowed`
   }
   
   if (isSelected) {

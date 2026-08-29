@@ -24,7 +24,6 @@ import {
 } from "@/lib/game-utils"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import Image from "next/image"
 import Link from "next/link"
 import { LeagueGuard } from "@/components/league-guard"
 import { Trophy, Award, Lock } from "lucide-react"
@@ -359,11 +358,7 @@ function MakePicksContent() {
               {(gameStatus === "in_progress" || gameStatus === "completed") &&
               game.homeScore !== null &&
               game.awayScore !== null ? (
-                <span
-                  className={`text-xl font-bold font-heading ${
-                    gameStatus === "in_progress" ? "text-red-600" : "text-green-600"
-                  }`}
-                >
+                <span className="text-xl font-bold font-heading">
                   {game.homeScore}-{game.awayScore}
                 </span>
               ) : (
@@ -444,10 +439,11 @@ function MakePicksContent() {
             <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        {/* League name/logo: only shown once there's room -- on narrow
-            screens it just crowds the header. */}
+        {/* League name: only shown once there's room -- on narrow screens it
+            just crowds the header. No logo here -- it's the same static
+            Tharakan Bros image the navbar already shows top-left, so
+            repeating it just duplicated that, not any league-specific art. */}
         <div className="hidden sm:flex items-center justify-center gap-2 mt-2">
-          <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={32} height={32} />
           <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
           <span className="text-sm text-muted-foreground">•</span>
           <span className="font-heading text-sm">{currentLeague?.name}</span>
@@ -598,25 +594,44 @@ function MakePicksContent() {
                 "No pick yet"
               )}
             </span>
-            {userPickForWeek && (
-              picksLocked ? (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="Why is my pick locked?"
-                      className="shrink-0 rounded-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                    >
-                      <Lock className="h-5 w-5" />
-                    </button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 text-sm border-2 border-black rounded-none">
-                    🔒 Picks are locked because the gameweek has started and you already have a pick for this week.
-                  </PopoverContent>
-                </Popover>
-              ) : (
-                <Unlock className="h-5 w-5 shrink-0" aria-label="Pick unlocked" />
-              )
+            {/* Pick-status icon: reflects the gameweek/pick state, not just
+                whether a pick exists -- unlocked whenever the week hasn't
+                started yet, a warning once it's started with no pick, and
+                locked only once a pick is made and locking has kicked in. */}
+            {!gameweekStarted ? (
+              <Unlock className="h-5 w-5 shrink-0" aria-label="Pick unlocked" />
+            ) : !userPickForWeek ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="No pick made yet"
+                    className="shrink-0 rounded-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    <AlertCircle className="h-5 w-5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 text-sm border-2 border-black rounded-none">
+                  ⚠️ The gameweek has started and you don't have a pick yet. You can still pick from games that haven't started.
+                </PopoverContent>
+              </Popover>
+            ) : picksLocked ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Why is my pick locked?"
+                    className="shrink-0 rounded-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    <Lock className="h-5 w-5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 text-sm border-2 border-black rounded-none">
+                  🔒 Picks are locked because the gameweek has started and you already have a pick for this week.
+                </PopoverContent>
+              </Popover>
+            ) : (
+              <Unlock className="h-5 w-5 shrink-0" aria-label="Pick unlocked" />
             )}
           </div>
 
