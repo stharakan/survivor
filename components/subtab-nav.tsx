@@ -1,8 +1,6 @@
 "use client"
 
 import { useEffect } from "react"
-import { Button } from "@/components/ui/button"
-import { ChevronLeft, ChevronRight } from "lucide-react"
 
 /**
  * Arrow-based stepper shared by the make-picks gameweek nav and the
@@ -52,15 +50,14 @@ export function SubtabNav({ title, prevLabel, nextLabel, onPrev, onNext, keyboar
           there's somewhere to go back to; the caption is optional. */}
       <div className="flex w-20 shrink-0 flex-col items-center gap-1 sm:w-24">
         {onPrev && (
-          <Button
-            variant="outline"
-            size="icon"
+          <button
+            type="button"
             aria-label={prevLabel ? `Previous: ${prevLabel}` : "Previous"}
-            className="border-2 border-black"
             onClick={onPrev}
+            className="flex min-h-10 items-center font-heading text-2xl leading-none text-retro-orange transition-transform hover:scale-125 hover:text-retro-red active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-retro-orange focus-visible:ring-offset-2 md:text-3xl"
           >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
+            {"<"}
+          </button>
         )}
         {prevLabel && (
           <span className="text-center text-[10px] leading-tight text-muted-foreground">{prevLabel}</span>
@@ -72,15 +69,14 @@ export function SubtabNav({ title, prevLabel, nextLabel, onPrev, onNext, keyboar
       {/* Right column: next item. */}
       <div className="flex w-20 shrink-0 flex-col items-center gap-1 sm:w-24">
         {onNext && (
-          <Button
-            variant="outline"
-            size="icon"
+          <button
+            type="button"
             aria-label={nextLabel ? `Next: ${nextLabel}` : "Next"}
-            className="border-2 border-black"
             onClick={onNext}
+            className="flex min-h-10 items-center font-heading text-2xl leading-none text-retro-orange transition-transform hover:scale-125 hover:text-retro-red active:scale-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-retro-orange focus-visible:ring-offset-2 md:text-3xl"
           >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
+            {">"}
+          </button>
         )}
         {nextLabel && (
           <span className="text-center text-[10px] leading-tight text-muted-foreground">{nextLabel}</span>
