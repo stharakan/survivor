@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/co
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { format } from "date-fns"
-import { CheckCircle, AlertCircle, ListChecks, X, ChevronLeft, ChevronRight, Unlock } from "lucide-react"
+import { CheckCircle, AlertCircle, ListChecks, X, Unlock } from "lucide-react"
 import { BatteryIndicator } from "@/components/ui/battery-indicator"
 import {
   computeGameStatus,
@@ -26,6 +26,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import Link from "next/link"
 import { LeagueGuard } from "@/components/league-guard"
+import { SubtabNav } from "@/components/subtab-nav"
 import { Trophy, Award, Lock } from "lucide-react"
 
 // Games within a section are sorted earliest-first by kickoff time.
@@ -119,26 +120,8 @@ function MakePicksContent() {
     checkLeagueEnded()
   }, [user, currentLeague])
 
-  // Keyboard shortcuts for gameweek navigation: Left/Right arrows step
-  // back/forward a week. Skipped while a form control has focus (so typing
-  // elsewhere on the page doesn't get hijacked) or while the teams modal is open.
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (showTeamsModal) return
-
-      const tag = (e.target as HTMLElement)?.tagName
-      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return
-
-      if (e.key === "ArrowRight") {
-        setCurrentWeek((prev) => Math.min(38, prev + 1))
-      } else if (e.key === "ArrowLeft") {
-        setCurrentWeek((prev) => Math.max(1, prev - 1))
-      }
-    }
-
-    window.addEventListener("keydown", handleKeyDown)
-    return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [showTeamsModal])
+  // Gameweek arrow-key navigation now lives in <SubtabNav>; it's suspended
+  // while the Available Teams modal is open (keyboardEnabled={!showTeamsModal}).
 
   const handleTeamSelect = (gameId: number, teamId: number) => {
     if (isUnpaid) {
@@ -416,29 +399,17 @@ function MakePicksContent() {
   return (
     <div className="space-y-6">
       {/* Gameweek heading: lives outside the orange box now so the box can be
-          reserved for the user's pick status + Available Teams button. */}
+          reserved for the user's pick status + Available Teams button. Shares
+          the SubtabNav stepper with results/rules; arrows are omitted at the
+          ends (GW1 has no back arrow), and captions are left off so the
+          gameweek arrows stay uncluttered. */}
       <div className="text-center mt-2">
-        <div className="flex items-center justify-center gap-4">
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Previous gameweek"
-            className="border-2 border-black shrink-0"
-            onClick={() => setCurrentWeek((prev) => Math.max(1, prev - 1))}
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="font-heading text-2xl md:text-3xl">Gameweek {currentWeek}</h1>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Next gameweek"
-            className="border-2 border-black shrink-0"
-            onClick={() => setCurrentWeek((prev) => Math.min(38, prev + 1))}
-          >
-            <ChevronRight className="h-4 w-4" />
-          </Button>
-        </div>
+        <SubtabNav
+          title={`Gameweek ${currentWeek}`}
+          onPrev={currentWeek > 1 ? () => setCurrentWeek((prev) => Math.max(1, prev - 1)) : undefined}
+          onNext={currentWeek < 38 ? () => setCurrentWeek((prev) => Math.min(38, prev + 1)) : undefined}
+          keyboardEnabled={!showTeamsModal}
+        />
         {/* League name: only shown once there's room -- on narrow screens it
             just crowds the header. No logo here -- it's the same static
             Tharakan Bros image the navbar already shows top-left, so
