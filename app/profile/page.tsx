@@ -15,7 +15,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { CheckCircle2, XCircle, MinusCircle, AlertTriangle, UserIcon, Shield, Edit3, Check, X, Trophy, Award } from "lucide-react"
 import { format } from "date-fns"
-import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
 
 function ProfileContent() {
@@ -142,15 +141,12 @@ function ProfileContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-heading">My Profile</h1>
-        <div className="flex items-center gap-2">
-          <div className="text-right">
-            <div className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</div>
-            <div className="font-heading text-sm">{currentLeague?.name}</div>
-          </div>
-          <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={60} height={60} />
-        </div>
+      {/* No page title -- the orange card headers below already label each
+          section, so we just show the league line here. */}
+      <div className="flex items-center justify-center gap-2 mt-2">
+        <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
+        <span className="text-sm text-muted-foreground">•</span>
+        <span className="font-heading text-sm">{currentLeague?.name}</span>
       </div>
 
       {seasonSummary?.isLeagueEnded && (

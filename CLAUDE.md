@@ -130,8 +130,8 @@ prod install (`uv sync --no-dev` — though note the Heroku build currently does
 
 ```
 app/                    Next.js pages (App Router), all under output:'export'
-  admin/, invite/, leagues/, login/, make-picks/, picks-remaining/,
-  player/, profile/, register/, reset-password/, results/, rules/, scoreboard/
+  admin/, invite/, leagues/, login/, make-picks/,
+  profile/, register/, reset-password/, results/, rules/, scoreboard/
 components/             Shared UI incl. league-guard.tsx, admin-guard.tsx, navbar.tsx
 components/ui/          shadcn/ui, customized for the retro pixel theme
 hooks/                  use-auth.tsx, use-league.tsx (context providers)
