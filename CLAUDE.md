@@ -190,6 +190,22 @@ The Cloud Run Job (`jobs/`) additionally needs `FOOTBALLDATA_API_KEY`,
 `--set-env-vars` / `--set-secrets` on the Cloud Run Job, not on Heroku. See
 `jobs/README.md` for the full env-var table.
 
+### Working with env files
+
+A protect-env hook (`.claude/hooks/protect-env.sh`, wired up in
+`.claude/settings.json`) blocks Claude Code from reading or editing any `.env*`
+file **except** `.env.example`. So:
+- **To see which variables exist**, read `.env.example` — it's the committed,
+  secret-free template listing every expected key. Don't try to read the real
+  `.env` / `.env.local`; the hook rejects it by target path (writing docs or
+  code that merely mentions those filenames is fine — it only checks the file
+  being touched, not content).
+- **New Python scripts must load config via `python-dotenv`** (`load_dotenv()`),
+  never hardcode secrets or assume they're already exported. Follow the existing
+  pattern in `api/app/core/config.py` / `api/app/db/mongodb.py`: call
+  `load_dotenv()` on import with `override=False` so real env vars win. Add any
+  new key to `.env.example` (with a placeholder value) so it stays discoverable.
+
 ## Ticket Workflow
 
 Work is tracked as markdown ticket files in `tickets/` (moved to `tickets/done/`
