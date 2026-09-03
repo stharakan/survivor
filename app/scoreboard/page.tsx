@@ -135,6 +135,13 @@ function ScoreboardContent() {
     setSelectedPlayer(player)
   }
 
+  // Names arrive as "Team Name (Player Name)". On tall-and-narrow layouts we
+  // drop the long team name and keep just the bracketed player name.
+  const getBracketName = (name: string) => {
+    const match = name.match(/\(([^)]+)\)\s*$/)
+    return match ? match[1] : name
+  }
+
   const getPickDisplay = (player: Player) => {
     const pickWeek = currentLeague?.current_pick_week || 1
     const gameWeek = currentLeague?.current_game_week || 0
@@ -185,32 +192,21 @@ function ScoreboardContent() {
 
   return (
     <div className="space-y-6">
-      {/* No page title -- the orange card headers below already label each
-          section, so we just show the league line here. */}
-      <div className="flex items-center justify-center gap-2 mt-2">
-        <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
-        <span className="text-sm text-muted-foreground">•</span>
-        <span className="font-heading text-sm">{currentLeague?.name}</span>
+      {/* League line, with the inner-circle toggle sitting directly beneath it. */}
+      <div className="flex flex-col items-center gap-3 mt-2">
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
+          <span className="text-sm text-muted-foreground">•</span>
+          <span className="font-heading text-sm">{currentLeague?.name}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">Inner Circle:</span>
+          <Switch checked={innerCircleOn} onCheckedChange={setInnerCircleOn} />
+        </div>
       </div>
 
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <CardTitle>Standings</CardTitle>
-              <CardDescription>
-                {innerCircleOn
-                  ? "Showing only you and your inner circle"
-                  : "Current standings for all players in the league"}
-              </CardDescription>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-sm font-medium">Inner Circle:</span>
-              <Switch checked={innerCircleOn} onCheckedChange={setInnerCircleOn} />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {loading ? (
             <div className="space-y-2">
               <Skeleton className="h-8 w-full" />
@@ -231,14 +227,15 @@ function ScoreboardContent() {
           ) : (
             <Table>
               <TableHeader>
-                <TableRow className="border-b-2 border-black">
-                  <TableHead className="w-16 font-heading">Rank</TableHead>
-                  <TableHead className="font-heading">Player</TableHead>
-                  <TableHead className="font-heading">
-                    Week {displayWeek} pick
+                <TableRow className="border-b-2 border-black bg-retro-orange hover:bg-retro-orange">
+                  <TableHead className="w-16 font-heading text-white hidden sm:table-cell">Rank</TableHead>
+                  <TableHead className="font-heading text-white">Player</TableHead>
+                  <TableHead className="font-heading text-white">
+                    <span className="hidden sm:inline">Week {displayWeek} pick</span>
+                    <span className="sm:hidden">Pick</span>
                   </TableHead>
-                  <TableHead className="text-right font-heading">Points</TableHead>
-                  <TableHead className="text-right font-heading">Strikes</TableHead>
+                  <TableHead className="text-right font-heading text-white">Points</TableHead>
+                  <TableHead className="text-right font-heading text-white hidden sm:table-cell">Strikes</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -248,7 +245,7 @@ function ScoreboardContent() {
                     className="border-b-2 border-black cursor-pointer hover:bg-accent/50"
                     onClick={() => handleRowClick(player)}
                   >
-                    <TableCell className="font-medium">
+                    <TableCell className="font-medium hidden sm:table-cell">
                       <div className="flex items-center">
                         {player.rank === 1 && <Trophy className="h-4 w-4 mr-1 text-retro-yellow" />}
                         {player.rank}
@@ -257,12 +254,24 @@ function ScoreboardContent() {
                     <TableCell>
                       <div className="flex items-center gap-1">
                         {player.isAI && <Bot className="h-4 w-4 shrink-0 text-muted-foreground" aria-label="AI team" />}
-                        {player.name}
+                        {/* Full "Team (Name)" on wide screens; just the bracketed
+                            name once the layout goes tall-and-narrow. */}
+                        <span className="hidden sm:inline">{player.name}</span>
+                        <span className="sm:hidden">{getBracketName(player.name)}</span>
+                        {/* Strikes column is dropped on narrow layouts -- surface
+                            them here as red X's instead. */}
+                        {player.strikes > 0 && (
+                          <span className="flex items-center sm:hidden" aria-label={`${player.strikes} strikes`}>
+                            {Array.from({ length: player.strikes }).map((_, i) => (
+                              <X key={i} className="h-3 w-3 shrink-0 text-retro-red" />
+                            ))}
+                          </span>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>{getPickDisplay(player)}</TableCell>
                     <TableCell className="text-right">{player.points}</TableCell>
-                    <TableCell className="text-right">{player.strikes}</TableCell>
+                    <TableCell className="text-right hidden sm:table-cell">{player.strikes}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
