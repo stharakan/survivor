@@ -7,7 +7,6 @@ import { getLeagueResults, getSeasonSummary } from "@/lib/api-client"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
-import Image from "next/image"
 import { LeagueGuard } from "@/components/league-guard"
 import { Trophy, Medal, Shield, Star } from "lucide-react"
 import type { SeasonSummary, PrizeWinner } from "@/types/season-summary"
@@ -292,15 +291,12 @@ function ResultsContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-heading">League Results</h1>
-        <div className="flex items-center gap-2">
-          <div className="text-right">
-            <div className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</div>
-            <div className="font-heading text-sm">{currentLeague?.name}</div>
-          </div>
-          <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={60} height={60} />
-        </div>
+      {/* No page title -- the orange card headers below already label each
+          section, so we just show the league line here. */}
+      <div className="flex items-center justify-center gap-2 mt-2">
+        <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
+        <span className="text-sm text-muted-foreground">•</span>
+        <span className="font-heading text-sm">{currentLeague?.name}</span>
       </div>
 
       {/* Tab Navigation */}

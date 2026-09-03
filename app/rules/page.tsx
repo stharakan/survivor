@@ -38,18 +38,17 @@ function RulesContent() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center">
-          <h1 className="text-2xl font-heading mr-4">League Rules</h1>
+      <div className="relative text-center mt-2">
+        {/* No page title -- the orange card headers below already label each
+            section, so we just show the league line here. */}
+        <div className="flex items-center justify-center gap-2">
+          <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
+          <span className="text-sm text-muted-foreground">•</span>
+          <span className="font-heading text-sm">{currentLeague?.name}</span>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="text-right">
-            <div className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</div>
-            <div className="font-heading text-sm">{currentLeague?.name}</div>
-          </div>
-          <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={60} height={60} />
-          
-          {/* Mobile hamburger menu */}
+        {/* Mobile hamburger menu -- absolutely positioned so the title stays
+            centered while the menu button hugs the right edge on mobile. */}
+        <div className="absolute right-0 top-0 md:hidden">
           <Sheet open={open} onOpenChange={setOpen}>
             <SheetTrigger asChild className="md:hidden">
               <Button variant="ghost" size="icon" className="ml-2">
