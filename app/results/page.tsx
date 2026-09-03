@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { LeagueGuard } from "@/components/league-guard"
+import { SubtabNav } from "@/components/subtab-nav"
 import { Trophy, Medal, Shield, Star } from "lucide-react"
 import type { SeasonSummary, PrizeWinner } from "@/types/season-summary"
 
@@ -25,6 +26,12 @@ interface ResultsData {
 }
 
 type TabId = "pick-history" | "season-summary"
+
+// Ordered subtabs, navigated via the arrow stepper (see SubtabNav).
+const RESULTS_TABS: { id: TabId; label: string }[] = [
+  { id: "pick-history", label: "Pick History" },
+  { id: "season-summary", label: "Season Summary" },
+]
 
 const prizeIcons: Record<string, React.ReactNode> = {
   trophy: <Trophy className="h-8 w-8" />,
@@ -289,39 +296,27 @@ function ResultsContent() {
     )
   }
 
+  const tabIndex = RESULTS_TABS.findIndex((t) => t.id === activeTab)
+  const prevTab = tabIndex > 0 ? RESULTS_TABS[tabIndex - 1] : undefined
+  const nextTab = tabIndex < RESULTS_TABS.length - 1 ? RESULTS_TABS[tabIndex + 1] : undefined
+
   return (
     <div className="space-y-6">
-      {/* No page title -- the orange card headers below already label each
-          section, so we just show the league line here. */}
-      <div className="flex items-center justify-center gap-2 mt-2">
+      {/* Subtab stepper: current subtab is the heading, arrows step between
+          subtabs (mirrors the make-picks gameweek nav). */}
+      <SubtabNav
+        title={RESULTS_TABS[tabIndex].label}
+        prevLabel={prevTab?.label}
+        nextLabel={nextTab?.label}
+        onPrev={prevTab ? () => setActiveTab(prevTab.id) : undefined}
+        onNext={nextTab ? () => setActiveTab(nextTab.id) : undefined}
+      />
+
+      {/* League line */}
+      <div className="flex items-center justify-center gap-2">
         <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
         <span className="text-sm text-muted-foreground">•</span>
         <span className="font-heading text-sm">{currentLeague?.name}</span>
-      </div>
-
-      {/* Tab Navigation */}
-      <div className="flex border-b-4 border-black">
-        <button
-          onClick={() => setActiveTab("pick-history")}
-          className={`px-6 py-3 font-heading text-sm border-2 border-black border-b-0 transition-colors ${
-            activeTab === "pick-history"
-              ? "bg-retro-orange text-white -mb-[4px] border-b-4 border-b-retro-orange"
-              : "bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
-          }`}
-        >
-          Pick History
-        </button>
-        <button
-          onClick={() => setActiveTab("season-summary")}
-          className={`px-6 py-3 font-heading text-sm border-2 border-black border-b-0 border-l-0 transition-colors flex items-center gap-2 ${
-            activeTab === "season-summary"
-              ? "bg-retro-orange text-white -mb-[4px] border-b-4 border-b-retro-orange"
-              : "bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700"
-          }`}
-        >
-          <Trophy className="h-4 w-4" />
-          Season Summary
-        </button>
       </div>
 
       {/* Tab Content */}

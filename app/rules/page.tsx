@@ -1,23 +1,20 @@
 "use client"
 
-import { Suspense, useState, useEffect } from "react"
+import { Suspense } from "react"
 import { useSearchParams, useRouter } from "next/navigation"
 import { useLeague } from "@/hooks/use-league"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
-import { Button } from "@/components/ui/button"
+import { Tabs, TabsContent } from "@/components/ui/tabs"
 import { Skeleton } from "@/components/ui/skeleton"
-import { FileText, DollarSign, Trophy, Clock, MessageSquare, Menu } from "lucide-react"
-import Image from "next/image"
+import { FileText, DollarSign, Trophy, Clock, MessageSquare } from "lucide-react"
 import { LeagueGuard } from "@/components/league-guard"
+import { SubtabNav } from "@/components/subtab-nav"
 
 function RulesContent() {
   const { currentLeague } = useLeague()
   const searchParams = useSearchParams()
   const router = useRouter()
-  const [open, setOpen] = useState(false)
-  
+
   // Tab management
   const activeSection = searchParams.get('section') || 'general'
   
@@ -36,79 +33,34 @@ function RulesContent() {
     { id: 'feedback', label: 'Feedback', icon: MessageSquare },
   ]
 
+  // Clamp to 0 so an unknown ?section= in the URL still renders a valid heading.
+  const sectionIndex = Math.max(0, rulesSections.findIndex((s) => s.id === activeSection))
+  const prevSection = sectionIndex > 0 ? rulesSections[sectionIndex - 1] : undefined
+  const nextSection = sectionIndex < rulesSections.length - 1 ? rulesSections[sectionIndex + 1] : undefined
+
   return (
     <div className="space-y-6">
-      <div className="relative text-center mt-2">
-        {/* No page title -- the orange card headers below already label each
-            section, so we just show the league line here. */}
-        <div className="flex items-center justify-center gap-2">
-          <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
-          <span className="text-sm text-muted-foreground">•</span>
-          <span className="font-heading text-sm">{currentLeague?.name}</span>
-        </div>
-        {/* Mobile hamburger menu -- absolutely positioned so the title stays
-            centered while the menu button hugs the right edge on mobile. */}
-        <div className="absolute right-0 top-0 md:hidden">
-          <Sheet open={open} onOpenChange={setOpen}>
-            <SheetTrigger asChild className="md:hidden">
-              <Button variant="ghost" size="icon" className="ml-2">
-                <Menu className="h-5 w-5" />
-              </Button>
-            </SheetTrigger>
-            <SheetContent side="right" className="border-l-4 border-black bg-[#f0e6d2] dark:bg-[#121212]">
-              <div className="flex justify-center mb-8 mt-4">
-                <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={100} height={100} />
-              </div>
-              {currentLeague && (
-                <div className="text-center mb-6 p-3 border-2 border-black bg-retro-orange text-white">
-                  <div className="font-heading text-base">League Rules</div>
-                  <div className="text-xs opacity-80">{currentLeague.name}</div>
-                </div>
-              )}
-              <nav className="flex flex-col gap-4 mt-8">
-                {rulesSections.map((section) => (
-                  <button
-                    key={section.id}
-                    onClick={() => {
-                      setActiveSection(section.id)
-                      setOpen(false)
-                    }}
-                    className={`text-sm font-heading transition-colors flex items-center p-2 ${
-                      activeSection === section.id
-                        ? "bg-retro-orange text-white rounded-md"
-                        : "text-foreground hover:bg-retro-orange/20"
-                    }`}
-                  >
-                    <section.icon className="h-4 w-4 mr-2" />
-                    {section.label}
-                  </button>
-                ))}
-              </nav>
-            </SheetContent>
-          </Sheet>
-        </div>
+      {/* Subtab stepper: current section is the heading, arrows step between
+          sections (same arrow nav as make-picks gameweeks / results). */}
+      <SubtabNav
+        title={rulesSections[sectionIndex].label}
+        prevLabel={prevSection?.label}
+        nextLabel={nextSection?.label}
+        onPrev={prevSection ? () => setActiveSection(prevSection.id) : undefined}
+        onNext={nextSection ? () => setActiveSection(nextSection.id) : undefined}
+      />
+
+      {/* League line */}
+      <div className="flex items-center justify-center gap-2">
+        <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
+        <span className="text-sm text-muted-foreground">•</span>
+        <span className="font-heading text-sm">{currentLeague?.name}</span>
       </div>
 
-      {/* Rules Vertical Tabs */}
-      <div className="flex gap-6">
-        <Tabs value={activeSection} onValueChange={setActiveSection} className="flex-1">
-          <div className="flex gap-6 items-start">
-            {/* Desktop vertical tabs - hidden on mobile */}
-            <TabsList orientation="vertical" className="shrink-0 self-start hidden md:flex">
-              {rulesSections.map((section) => (
-                <TabsTrigger 
-                  key={section.id} 
-                  value={section.id} 
-                  className="justify-start bg-retro-orange/10 data-[state=active]:bg-retro-orange data-[state=active]:text-white"
-                >
-                  <section.icon className="h-4 w-4 mr-2" />
-                  {section.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-
-            {/* Content area - full width on mobile, shared with desktop */}
-            <div className="flex-1 w-full md:w-auto">
+      {/* Rules content -- navigated via the arrow stepper above; no sidebar or
+          hamburger, so every page shares the same arrow nav. */}
+      <Tabs value={activeSection} onValueChange={setActiveSection}>
+        <div className="w-full">
               <TabsContent value="general" className="space-y-4 mt-0">
                 <Card className="border-4 border-black">
                   <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
@@ -297,10 +249,8 @@ function RulesContent() {
                   </CardContent>
                 </Card>
               </TabsContent>
-            </div>
-          </div>
-        </Tabs>
-      </div>
+        </div>
+      </Tabs>
     </div>
   )
 }
