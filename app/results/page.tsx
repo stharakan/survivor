@@ -4,7 +4,7 @@ import { useEffect, useState } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useLeague } from "@/hooks/use-league"
 import { getLeagueResults, getSeasonSummary } from "@/lib/api-client"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
 import { LeagueGuard } from "@/components/league-guard"
@@ -319,22 +319,9 @@ function ResultsContent() {
         <span className="font-heading text-sm">{currentLeague?.name}</span>
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content -- heading lives in the stepper above, so no card header. */}
       <Card className="border-4 border-black">
-        <CardHeader>
-          <CardTitle>
-            {activeTab === "pick-history" ? "Pick Results by Week" : "Season Summary"}
-          </CardTitle>
-          <CardDescription>
-            {activeTab === "pick-history"
-              ? "Complete history of all players' picks and their outcomes"
-              : seasonSummary?.isLeagueEnded
-                ? "Final prize winners and standings for this season"
-                : "Current prize leaders and standings"
-            }
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           {loading ? (
             <div className="space-y-2">
               <Skeleton className="h-8 w-full" />

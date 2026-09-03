@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { ChevronLeft, ChevronRight } from "lucide-react"
 
@@ -18,8 +19,27 @@ interface SubtabNavProps {
 }
 
 export function SubtabNav({ title, prevLabel, nextLabel, onPrev, onNext }: SubtabNavProps) {
+  // Left/Right arrow keys step between subtabs. Skipped while a form control
+  // has focus so typing elsewhere on the page isn't hijacked (mirrors the
+  // gameweek nav on make-picks).
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return
+
+      if (e.key === "ArrowRight") {
+        onNext?.()
+      } else if (e.key === "ArrowLeft") {
+        onPrev?.()
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [onPrev, onNext])
+
   return (
-    <div className="flex items-start justify-center gap-3 sm:gap-4">
+    <div className="flex items-start justify-center gap-3 mt-2 sm:gap-4">
       {/* Left column: previous subtab (empty at the start of the sequence, but
           kept in the layout so the title stays centered). */}
       <div className="flex w-20 shrink-0 flex-col items-center gap-1 sm:w-24">
