@@ -111,19 +111,24 @@ async def calculate_scores_and_strikes() -> int:
         try:
             last_completed_week = league_week_map.get(str(membership["leagueSeasonId"]), 0)
 
-            picks = await db[Collections.PICKS].find({
+            # All scored picks regardless of week -- points and loss strikes should
+            # reflect individual game results as they finish, not wait for the whole
+            # gameweek to complete.
+            all_scored_picks = await db[Collections.PICKS].find({
                 "userId": membership["userId"],
                 "leagueSeasonId": membership["leagueSeasonId"],
                 "result": {"$ne": None},
-                "week": {"$lte": last_completed_week},
             }).to_list(length=None)
 
-            weeks_with_picks = len({p["week"] for p in picks})
+            # Missing-pick strikes still gate on last_completed_week: you can't say
+            # a user "missed" a week until that week is fully over.
+            completed_week_picks = [p for p in all_scored_picks if p["week"] <= last_completed_week]
+            weeks_with_picks = len({p["week"] for p in completed_week_picks})
             missing_pick_strikes = max(0, last_completed_week - weeks_with_picks)
 
             total_points = 0
             loss_strikes = 0
-            for pick in picks:
+            for pick in all_scored_picks:
                 if pick["result"] == "win":
                     total_points += 3
                 elif pick["result"] == "draw":
@@ -154,7 +159,7 @@ async def calculate_scores_and_strikes() -> int:
                 processed_count += 1
                 _log(
                     f"Updated {membership.get('teamName')}: {total_points} points, {total_strikes} strikes "
-                    f"({loss_strikes} losses + {missing_pick_strikes} missed weeks, from {len(picks)} picks)"
+                    f"({loss_strikes} losses + {missing_pick_strikes} missed weeks, from {len(all_scored_picks)} picks)"
                 )
         except Exception as error:  # noqa: BLE001
             _log(f"Error processing membership {membership['_id']}: {error}")

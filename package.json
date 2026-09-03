@@ -7,7 +7,6 @@
     "dev": "next dev",
     "lint": "next lint",
     "start": "next start",
-    "calculate-scores": "node scripts/calculate-scores.js",
     "test": "jest",
     "test:watch": "jest --watch",
     "clone-prod-to-dev": "npx tsx --env-file=.env.local scripts/clone-prod-to-dev.ts"
