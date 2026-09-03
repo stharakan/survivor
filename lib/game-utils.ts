@@ -116,18 +116,24 @@ export function isGameDisabled(game: { startTime?: string; date?: string; status
  */
 export function getGameCardClasses(
   game: { startTime?: string; date?: string; status?: GameStatus; manualStatusOverride?: GameStatus },
-  isSelected: boolean = false
+  isSelected: boolean = false,
+  isPicksLocked: boolean = false
 ): string {
   const baseClasses = "border-2 border-black shadow-pixel"
   const status = computeGameStatus(game)
 
-  if (status === "not_started") {
-    return `${baseClasses} ${isSelected ? "bg-retro-orange text-white" : "hover:bg-accent"}`
-  } else if (status === "postponed") {
+  if (status === "postponed") {
     return `border-2 border-amber-500 shadow-pixel opacity-70 cursor-not-allowed bg-amber-50 dark:bg-amber-900/20`
-  } else {
-    return `${baseClasses} opacity-60 cursor-not-allowed bg-gray-100 dark:bg-gray-800`
   }
+
+  // Once the week is locked, every card should read as inert -- including a
+  // game that individually hasn't started yet -- so the gray team boxes
+  // inside it aren't sitting on a card that still looks pickable.
+  if (status === "not_started" && !isPicksLocked) {
+    return `${baseClasses} ${isSelected ? "bg-retro-orange text-white" : "hover:bg-accent"}`
+  }
+
+  return `${baseClasses} opacity-60 cursor-not-allowed bg-gray-100 dark:bg-gray-800`
 }
 
 /**
@@ -160,25 +166,36 @@ export function getTeamSelectionClasses(
   isTeamUsed: boolean = false,
   isPicksLocked: boolean = false
 ): string {
-  const baseClasses = "flex flex-col items-center p-4 rounded-none border-2 transition-colors"
-  const isDisabled = isGameDisabled(game)
-  
-  if (isPicksLocked) {
-    return `${baseClasses} border-gray-400 cursor-not-allowed bg-gray-100 dark:bg-gray-800 opacity-60`
-  }
-  
-  if (isDisabled) {
-    return `${baseClasses} border-gray-300 cursor-not-allowed bg-gray-50 dark:bg-gray-900/20`
-  }
-  
-  if (isTeamUsed) {
-    return `${baseClasses} border-red-300 bg-red-50 dark:bg-red-900/20 cursor-not-allowed`
-  }
-  
+  // w-full + min-h so every team box fills its grid column and matches
+  // height regardless of team name length (SUR-* mobile make-picks polish) --
+  // otherwise a box sized to "Arsenal" looks nothing like one sized to
+  // "Manchester United", and the VS/score column drifts off-center.
+  // min-w-0 is load-bearing: grid items default to min-width:auto (their
+  // content's width), which lets a long name like "Coventry City" force its
+  // track wider than the 1fr split regardless of w-full -- min-w-0 is what
+  // actually lets the box shrink so the name's `truncate` span can kick in.
+  const baseClasses = "flex w-full min-w-0 min-h-[8.5rem] flex-col items-center justify-center p-4 rounded-none border-2 transition-colors"
+
+  // Two-state model: can you still click this team, or not -- that's the
+  // only distinction worth painting. Whether that's because the week is
+  // locked, this specific game already started/finished/was postponed, or
+  // you've already used the team elsewhere doesn't change how it should
+  // look; collapsing them avoids the mismatched "gray team box on a still
+  // white/not-started game card" combinations the per-reason tints produced.
+  const canPickThisTeam = !isPicksLocked && !isGameDisabled(game) && !isTeamUsed
+
+  // Your actual pick always gets the highlight, even once it's no longer
+  // pickable (a past week's game is normally "disabled") -- otherwise
+  // switching to an earlier week hides which team you picked. Cursor still
+  // reflects whether clicking it would do anything.
   if (isSelected) {
-    return `${baseClasses} bg-retro-orange text-white border-black cursor-pointer`
+    return `${baseClasses} bg-retro-orange text-white border-black ${canPickThisTeam ? "cursor-pointer" : "cursor-default"}`
   }
-  
+
+  if (!canPickThisTeam) {
+    return `${baseClasses} border-transparent cursor-not-allowed bg-gray-100 dark:bg-gray-800 opacity-60`
+  }
+
   return `${baseClasses} hover:bg-accent border-transparent cursor-pointer`
 }
 

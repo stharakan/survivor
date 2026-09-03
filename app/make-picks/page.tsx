@@ -6,13 +6,13 @@ import { useLeague } from "@/hooks/use-league"
 import { getUpcomingGamesWithPicks, makePick, getPicksRemaining, getSeasonSummary } from "@/lib/api"
 import type { Game } from "@/types/game"
 import type { Team } from "@/types/team"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { format, isPast, addHours } from "date-fns"
-import { CheckCircle, AlertCircle, Clock, ListChecks, X } from "lucide-react"
+import { format } from "date-fns"
+import { CheckCircle, AlertCircle, ListChecks, X, ChevronLeft, ChevronRight, Unlock } from "lucide-react"
 import { BatteryIndicator } from "@/components/ui/battery-indicator"
-import { 
+import {
   computeGameStatus,
   canPickFromGame,
   canChangeExistingPick,
@@ -21,16 +21,16 @@ import {
   getTeamSelectionClasses,
   hasGameweekStarted,
   arePicksLocked,
-  canMakeFirstPick,
-  shouldDisablePickChanges
 } from "@/lib/game-utils"
-import type { GameStatus } from "@/types/game"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import Image from "next/image"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import Link from "next/link"
 import { LeagueGuard } from "@/components/league-guard"
-import type { SeasonSummary } from "@/types/season-summary"
 import { Trophy, Award, Lock } from "lucide-react"
+
+// Games within a section are sorted earliest-first by kickoff time.
+const byStartTime = (a: Game, b: Game) =>
+  new Date(a.startTime || a.date).getTime() - new Date(b.startTime || b.date).getTime()
 
 function MakePicksContent() {
   const { user } = useAuth()
@@ -53,9 +53,6 @@ function MakePicksContent() {
   const [gameweekStarted, setGameweekStarted] = useState(false)
   const [picksLocked, setPicksLocked] = useState(false)
   const [isLeagueEnded, setIsLeagueEnded] = useState(false)
-
-  // Weeks for the season
-  const weeks = Array.from({ length: 38 }, (_, i) => i + 1)
 
   useEffect(() => {
     const fetchData = async () => {
@@ -82,7 +79,7 @@ function MakePicksContent() {
           const gameweekHasStarted = hasGameweekStarted(currentLeague, currentWeek)
           const hasExistingPick = !!userPick
           const locksEnabled = arePicksLocked(hasExistingPick, gameweekHasStarted)
-          
+
           setGameweekStarted(gameweekHasStarted)
           setPicksLocked(locksEnabled)
         } catch (error) {
@@ -122,6 +119,27 @@ function MakePicksContent() {
     checkLeagueEnded()
   }, [user, currentLeague])
 
+  // Keyboard shortcuts for gameweek navigation: Left/Right arrows step
+  // back/forward a week. Skipped while a form control has focus (so typing
+  // elsewhere on the page doesn't get hijacked) or while the teams modal is open.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (showTeamsModal) return
+
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return
+
+      if (e.key === "ArrowRight") {
+        setCurrentWeek((prev) => Math.min(38, prev + 1))
+      } else if (e.key === "ArrowLeft") {
+        setCurrentWeek((prev) => Math.max(1, prev - 1))
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown)
+    return () => window.removeEventListener("keydown", handleKeyDown)
+  }, [showTeamsModal])
+
   const handleTeamSelect = (gameId: number, teamId: number) => {
     if (isUnpaid) {
       setError("Picks are locked until your league payment is marked paid. Contact your league admin.")
@@ -151,10 +169,10 @@ function MakePicksContent() {
         return
       }
     }
-    
+
     // Clear any previous errors
     setError(null)
-    
+
     // In survivor league, you can only pick one team per week
     // Replace any previous selection with the new one
     setSelectedTeam(teamId)
@@ -208,9 +226,9 @@ function MakePicksContent() {
       setUserPickForWeek(selectedTeam)
 
       // Update the games array to include the new userPick
-      setGames(prevGames => 
-        prevGames.map(game => 
-          game.id === selectedGameId 
+      setGames(prevGames =>
+        prevGames.map(game =>
+          game.id === selectedGameId
             ? {
                 ...game,
                 userPick: {
@@ -240,13 +258,13 @@ function MakePicksContent() {
   // Get the name of the team the user picked for current week
   const getUserPickedTeamName = () => {
     if (!userPickForWeek) return null
-    
-    const gameWithPick = games.find(game => 
-      game.userPick && 
-      game.userPick.user === user?.id && 
+
+    const gameWithPick = games.find(game =>
+      game.userPick &&
+      game.userPick.user === user?.id &&
       game.userPick.team.id === userPickForWeek
     )
-    
+
     return gameWithPick?.userPick?.team.name || null
   }
 
@@ -267,23 +285,168 @@ function MakePicksContent() {
     return team ? team.remaining : 0
   }
 
+  // Bucket games by status into the three sections, each sorted earliest-first.
+  const liveGames = games.filter((g) => computeGameStatus(g) === "in_progress").sort(byStartTime)
+  const completedGames = games.filter((g) => computeGameStatus(g) === "completed").sort(byStartTime)
+  const upcomingGames = games
+    .filter((g) => {
+      const status = computeGameStatus(g)
+      return status === "not_started" || status === "postponed"
+    })
+    .sort(byStartTime)
+
+  const renderGameCard = (game: Game) => {
+    const gameStatus = computeGameStatus(game)
+    const statusDisplay = getGameStatusDisplay(gameStatus)
+    const canPick = canPickFromGame(game)
+    const isHomeTeamUsed = isTeamUsed(game.homeTeam.id)
+    const isAwayTeamUsed = isTeamUsed(game.awayTeam.id)
+    const isHomeSelected = selectedTeam === game.homeTeam.id && selectedGameId === game.id
+    const isAwaySelected = selectedTeam === game.awayTeam.id && selectedGameId === game.id
+
+    return (
+      <Card key={game.id} className={getGameCardClasses(game, false, picksLocked)}>
+        <CardHeader className="pb-2">
+          {gameStatus === "postponed" && (
+            <div className="flex justify-end">
+              <div className={`px-2 py-1 flex items-center gap-1 border-2 border-black ${statusDisplay.className}`}>
+                <AlertCircle className="h-4 w-4" />
+                <span className="text-xs font-heading">{statusDisplay.label}</span>
+              </div>
+            </div>
+          )}
+          {gameStatus === "postponed" && game.isPostponed && game.originalWeek && (
+            <div className="mt-2 text-center text-xs text-muted-foreground">
+              Originally week {game.originalWeek} — will be rescheduled
+            </div>
+          )}
+          <CardDescription className="text-center">
+            {gameStatus === "in_progress"
+              ? "In progress"
+              : gameStatus === "completed"
+                ? format(new Date(game.date), "EEE, MMM d")
+                : format(new Date(game.date), "EEEE, MMMM d, yyyy 'at' h:mm a")}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {/* Equal-width side columns (1fr/auto/1fr) so both team boxes are
+              always the same size regardless of name length -- see
+              getTeamSelectionClasses in lib/game-utils.ts for the matching
+              w-full/min-h that lets them actually fill the column. */}
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+            <div
+              className={getTeamSelectionClasses(game, isHomeSelected, isHomeTeamUsed, picksLocked)}
+              onClick={() => {
+                if (canPick && !isHomeTeamUsed && !picksLocked) {
+                  handleTeamSelect(game.id, game.homeTeam.id)
+                }
+              }}
+            >
+              <img
+                src={game.homeTeam.logo || "/placeholder.svg"}
+                alt={game.homeTeam.name}
+                className="w-12 h-12 mb-2"
+              />
+              <span className="font-medium w-full text-center truncate" title={game.homeTeam.name}>
+                {game.homeTeam.name}
+              </span>
+              <span className="text-sm">(Home)</span>
+              <BatteryIndicator remaining={getTeamRemaining(game.homeTeam.id)} className="mt-1" />
+            </div>
+
+            <div className="text-center px-1">
+              {(gameStatus === "in_progress" || gameStatus === "completed") &&
+              game.homeScore !== null &&
+              game.awayScore !== null ? (
+                <span className="text-xl font-bold font-heading">
+                  {game.homeScore}-{game.awayScore}
+                </span>
+              ) : (
+                <span className="text-xl font-bold font-heading">VS</span>
+              )}
+            </div>
+
+            <div
+              className={getTeamSelectionClasses(game, isAwaySelected, isAwayTeamUsed, picksLocked)}
+              onClick={() => {
+                if (canPick && !isAwayTeamUsed && !picksLocked) {
+                  handleTeamSelect(game.id, game.awayTeam.id)
+                }
+              }}
+            >
+              <img
+                src={game.awayTeam.logo || "/placeholder.svg"}
+                alt={game.awayTeam.name}
+                className="w-12 h-12 mb-2"
+              />
+              <span className="font-medium w-full text-center truncate" title={game.awayTeam.name}>
+                {game.awayTeam.name}
+              </span>
+              <span className="text-sm">(Away)</span>
+              <BatteryIndicator remaining={getTeamRemaining(game.awayTeam.id)} className="mt-1" />
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter>
+          <Button
+            variant="pixel"
+            className="w-full"
+            disabled={
+              !selectedTeam ||
+              selectedGameId !== game.id ||
+              submitting ||
+              !canPick ||
+              picksLocked ||
+              (isHomeTeamUsed && selectedTeam === game.homeTeam.id) ||
+              (isAwayTeamUsed && selectedTeam === game.awayTeam.id)
+            }
+            onClick={() => handleSubmitPick()}
+          >
+            {submitting
+              ? "Submitting..."
+              : userPickForWeek === selectedTeam
+                ? "Change Pick"
+                : "Submit Pick"}
+          </Button>
+        </CardFooter>
+      </Card>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center">
-          <h1 className="text-2xl font-heading mr-4">Make Picks</h1>
-
-          <Button variant="outline" size="sm" className="border-2 border-black" onClick={() => setShowTeamsModal(true)}>
-            <ListChecks className="h-4 w-4 mr-2" />
-            Available Teams
+      {/* Gameweek heading: lives outside the orange box now so the box can be
+          reserved for the user's pick status + Available Teams button. */}
+      <div className="text-center mt-2">
+        <div className="flex items-center justify-center gap-4">
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Previous gameweek"
+            className="border-2 border-black shrink-0"
+            onClick={() => setCurrentWeek((prev) => Math.max(1, prev - 1))}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <h1 className="font-heading text-2xl md:text-3xl">Gameweek {currentWeek}</h1>
+          <Button
+            variant="outline"
+            size="icon"
+            aria-label="Next gameweek"
+            className="border-2 border-black shrink-0"
+            onClick={() => setCurrentWeek((prev) => Math.min(38, prev + 1))}
+          >
+            <ChevronRight className="h-4 w-4" />
           </Button>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="text-right">
-            <div className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</div>
-            <div className="font-heading text-sm">{currentLeague?.name}</div>
-          </div>
-          <Image src="/images/tharakan-bros-logo.png" alt="Tharakan Bros Logo" width={60} height={60} />
+        {/* League name: only shown once there's room -- on narrow screens it
+            just crowds the header. No logo here -- it's the same static
+            Tharakan Bros image the navbar already shows top-left, so
+            repeating it just duplicated that, not any league-specific art. */}
+        <div className="hidden sm:flex items-center justify-center gap-2 mt-2">
+          <span className="text-sm text-muted-foreground">{currentLeague?.sportsLeague}</span>
+          <span className="text-sm text-muted-foreground">•</span>
+          <span className="font-heading text-sm">{currentLeague?.name}</span>
         </div>
       </div>
 
@@ -414,178 +577,123 @@ function MakePicksContent() {
         </Card>
       ) : (
       <Card className="border-4 border-black">
-        <CardHeader className="bg-retro-orange text-white border-b-4 border-black">
-          <div className="flex justify-between items-center">
-            <CardTitle className="text-xl">
-              Week {currentWeek}
-              {getUserPickedTeamName() && (
-                <span className="text-white/90"> - You chose {getUserPickedTeamName()}</span>
+        <CardHeader className="bg-retro-orange text-white border-b-4 border-black space-y-3">
+          {/* Pick status: text + lock/unlock icon travel together as one
+              centered unit (previously justify-between, which flung the
+              lock icon out to the far edge on wide screens). */}
+          <div className="flex items-center justify-center gap-2 text-center flex-wrap">
+            <span className="font-heading text-sm md:text-base">
+              {userPickForWeek ? (
+                <>
+                  Your pick:{" "}
+                  <span className="text-base md:text-lg uppercase break-words">
+                    {getUserPickedTeamName()}
+                  </span>
+                </>
+              ) : (
+                "No pick yet"
               )}
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-white text-black border-2 border-black"
-                onClick={() => setCurrentWeek((prev) => Math.max(1, prev - 1))}
-              >
-                Prev
-              </Button>
-              <select
-                value={currentWeek}
-                onChange={(e) => setCurrentWeek(Number(e.target.value))}
-                className="bg-white text-black border-2 border-black px-2 py-1 font-heading text-sm"
-              >
-                {weeks.map((week) => (
-                  <option key={week} value={week}>
-                    Week {week}
-                  </option>
-                ))}
-              </select>
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-white text-black border-2 border-black"
-                onClick={() => setCurrentWeek((prev) => Math.min(38, prev + 1))}
-              >
-                Next
-              </Button>
-            </div>
-          </div>
-          <CardDescription className="text-white/80">
-            {picksLocked ? (
-              "🔒 Picks are locked because the gameweek has started and you already have a pick for this week."
-            ) : gameweekStarted && !userPickForWeek ? (
-              "⚠️ The gameweek has started. You can still make your first pick, but only from games that haven't started yet."
-            ) : hasPickableGames() ? (
-              "Choose one team for this week. Remember: You can pick each team up to twice per season!"
-            ) : userPickForWeek ? (
-              "You have made your pick for this week. You can change it if there are games that haven't started yet."
+            </span>
+            {/* Pick-status icon: reflects the gameweek/pick state, not just
+                whether a pick exists -- unlocked whenever the week hasn't
+                started yet, a warning once it's started with no pick, and
+                locked only once a pick is made and locking has kicked in. */}
+            {!gameweekStarted ? (
+              <Unlock className="h-5 w-5 shrink-0" aria-label="Pick unlocked" />
+            ) : !userPickForWeek ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="No pick made yet"
+                    className="shrink-0 rounded-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    <AlertCircle className="h-5 w-5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 text-sm border-2 border-black rounded-none">
+                  ⚠️ The gameweek has started and you don't have a pick yet. You can still pick from games that haven't started.
+                </PopoverContent>
+              </Popover>
+            ) : picksLocked ? (
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Why is my pick locked?"
+                    className="shrink-0 rounded-none focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                  >
+                    <Lock className="h-5 w-5" />
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-64 text-sm border-2 border-black rounded-none">
+                  🔒 Picks are locked because the gameweek has started and you already have a pick for this week.
+                </PopoverContent>
+              </Popover>
             ) : (
-              "All games for this week have started or completed."
+              <Unlock className="h-5 w-5 shrink-0" aria-label="Pick unlocked" />
             )}
-          </CardDescription>
+          </div>
+
+          {/* Available Teams button */}
+          <div className="flex justify-center">
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white text-black border-2 border-black"
+              onClick={() => setShowTeamsModal(true)}
+            >
+              <ListChecks className="h-4 w-4 mr-2" />
+              Available Teams
+            </Button>
+          </div>
         </CardHeader>
-        <CardContent className="pt-6">
+        <CardContent className="pt-6 space-y-6">
+          {gameweekStarted && !userPickForWeek ? (
+            <p className="text-xs text-muted-foreground -mt-2">
+              ⚠️ The gameweek has started. You can still make your first pick, but only from games that haven't started yet.
+            </p>
+          ) : !picksLocked && !hasPickableGames() && userPickForWeek ? (
+            <p className="text-xs text-muted-foreground -mt-2">
+              You have made your pick for this week. You can change it if there are games that haven't started yet.
+            </p>
+          ) : !hasPickableGames() && !userPickForWeek ? (
+            <p className="text-xs text-muted-foreground -mt-2">
+              All games for this week have started or completed.
+            </p>
+          ) : null}
+
           {loading ? (
             <div className="space-y-4">
               <Skeleton className="h-[200px] w-full rounded-lg" />
               <Skeleton className="h-[200px] w-full rounded-lg" />
             </div>
           ) : games.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {games.map((game) => {
-                const gameStatus = computeGameStatus(game)
-                const statusDisplay = getGameStatusDisplay(gameStatus)
-                const canPick = canPickFromGame(game)
-                const isHomeTeamUsed = isTeamUsed(game.homeTeam.id)
-                const isAwayTeamUsed = isTeamUsed(game.awayTeam.id)
-                const isHomeSelected = selectedTeam === game.homeTeam.id && selectedGameId === game.id
-                const isAwaySelected = selectedTeam === game.awayTeam.id && selectedGameId === game.id
-
-                return (
-                  <Card
-                    key={game.id}
-                    className={getGameCardClasses(game)}
-                  >
-                    <CardHeader className="pb-2">
-                      <div className="flex justify-between items-center">
-                        <CardTitle className="text-lg">Match {game.id}</CardTitle>
-                        {gameStatus !== "not_started" && (
-                          <div className={`px-2 py-1 flex items-center gap-1 border-2 border-black ${statusDisplay.className}`}>
-                            {statusDisplay.icon === "X" ? (
-                              <X className="h-4 w-4" />
-                            ) : statusDisplay.icon === "AlertCircle" ? (
-                              <AlertCircle className="h-4 w-4" />
-                            ) : (
-                              <Clock className="h-4 w-4" />
-                            )}
-                            <span className="text-xs font-heading">{statusDisplay.label}</span>
-                          </div>
-                        )}
-                      </div>
-                      {gameStatus === "completed" && (game.homeScore !== null && game.awayScore !== null) && (
-                        <div className="mt-2 text-center">
-                          <div className="text-sm font-bold">
-                            Final Score: {game.homeTeam.name} {game.homeScore} - {game.awayScore} {game.awayTeam.name}
-                          </div>
-                        </div>
-                      )}
-                      {gameStatus === "postponed" && game.isPostponed && game.originalWeek && (
-                        <div className="mt-2 text-center text-xs text-muted-foreground">
-                          Originally week {game.originalWeek} — will be rescheduled
-                        </div>
-                      )}
-                      <CardDescription>{format(new Date(game.date), "EEEE, MMMM d, yyyy 'at' h:mm a")}</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex justify-between items-center">
-                        <div
-                          className={getTeamSelectionClasses(game, isHomeSelected, isHomeTeamUsed, picksLocked)}
-                          onClick={() => {
-                            if (canPick && !isHomeTeamUsed && !picksLocked) {
-                              handleTeamSelect(game.id, game.homeTeam.id)
-                            }
-                          }}
-                        >
-                          <img
-                            src={game.homeTeam.logo || "/placeholder.svg"}
-                            alt={game.homeTeam.name}
-                            className="w-12 h-12 mb-2"
-                          />
-                          <span className="font-medium">{game.homeTeam.name}</span>
-                          <span className="text-sm">(Home)</span>
-                          <BatteryIndicator remaining={getTeamRemaining(game.homeTeam.id)} className="mt-1" />
-                        </div>
-
-                        <div className="text-center">
-                          <span className="text-xl font-bold font-heading">VS</span>
-                        </div>
-
-                        <div
-                          className={getTeamSelectionClasses(game, isAwaySelected, isAwayTeamUsed, picksLocked)}
-                          onClick={() => {
-                            if (canPick && !isAwayTeamUsed && !picksLocked) {
-                              handleTeamSelect(game.id, game.awayTeam.id)
-                            }
-                          }}
-                        >
-                          <img
-                            src={game.awayTeam.logo || "/placeholder.svg"}
-                            alt={game.awayTeam.name}
-                            className="w-12 h-12 mb-2"
-                          />
-                          <span className="font-medium">{game.awayTeam.name}</span>
-                          <span className="text-sm">(Away)</span>
-                          <BatteryIndicator remaining={getTeamRemaining(game.awayTeam.id)} className="mt-1" />
-                        </div>
-                      </div>
-                    </CardContent>
-                    <CardFooter>
-                      <Button
-                        variant="pixel"
-                        className="w-full"
-                        disabled={
-                          !selectedTeam ||
-                          selectedGameId !== game.id ||
-                          submitting ||
-                          !canPick ||
-                          picksLocked ||
-                          (isHomeTeamUsed && selectedTeam === game.homeTeam.id) ||
-                          (isAwayTeamUsed && selectedTeam === game.awayTeam.id)
-                        }
-                        onClick={() => handleSubmitPick()}
-                      >
-                        {submitting
-                          ? "Submitting..."
-                          : userPickForWeek === selectedTeam
-                            ? "Change Pick"
-                            : "Submit Pick"}
-                      </Button>
-                    </CardFooter>
-                  </Card>
-                )
-              })}
+            <div className="space-y-8">
+              {liveGames.length > 0 && (
+                <div>
+                  <h2 className="font-heading text-lg border-b-2 border-black inline-block mb-3">Live</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {liveGames.map(renderGameCard)}
+                  </div>
+                </div>
+              )}
+              {upcomingGames.length > 0 && (
+                <div>
+                  <h2 className="font-heading text-lg border-b-2 border-black inline-block mb-3">Upcoming</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {upcomingGames.map(renderGameCard)}
+                  </div>
+                </div>
+              )}
+              {completedGames.length > 0 && (
+                <div>
+                  <h2 className="font-heading text-lg border-b-2 border-black inline-block mb-3">Full Time</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {completedGames.map(renderGameCard)}
+                  </div>
+                </div>
+              )}
             </div>
           ) : (
             <Card className="border-2 border-black">
