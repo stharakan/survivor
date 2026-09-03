@@ -25,13 +25,7 @@ interface ResultsData {
   completedWeeks: number[]
 }
 
-type TabId = "pick-history" | "season-summary"
-
-// Ordered subtabs, navigated via the arrow stepper (see SubtabNav).
-const RESULTS_TABS: { id: TabId; label: string }[] = [
-  { id: "pick-history", label: "Pick History" },
-  { id: "season-summary", label: "Season Summary" },
-]
+type TabId = "pick-history" | "prize-leaders" | "standings"
 
 const prizeIcons: Record<string, React.ReactNode> = {
   trophy: <Trophy className="h-8 w-8" />,
@@ -87,9 +81,9 @@ function ResultsContent() {
           setResultsData(resultsRes)
           setSeasonSummary(summaryRes)
 
-          // Default to Season Summary tab when league has ended
+          // Default to the prize-leaders tab when the league has ended
           if (summaryRes?.isLeagueEnded) {
-            setActiveTab("season-summary")
+            setActiveTab("prize-leaders")
           }
         } catch (error) {
           console.error("Error fetching results data:", error)
@@ -209,92 +203,103 @@ function ResultsContent() {
     </>
   )
 
-  const SeasonSummaryTab = () => {
-    if (!seasonSummary) {
+  // Prize cards only -- the tab heading (in the stepper above) already names
+  // this section ("Current Prize Leaders" / "Prize Winners"), so no inner header.
+  const PrizeLeadersTab = () => {
+    if (!seasonSummary || seasonSummary.prizes.length === 0) {
       return (
         <div className="text-center py-16">
-          <div className="text-6xl mb-4">📊</div>
-          <h3 className="text-xl font-heading mb-2">Season Summary Not Available</h3>
+          <div className="text-6xl mb-4">🏆</div>
+          <h3 className="text-xl font-heading mb-2">No Prize Leaders Yet</h3>
           <p className="text-muted-foreground">
-            The season summary will be available once the league has ended.
+            Prize leaders will appear here once gameweeks are completed.
           </p>
         </div>
       )
     }
 
     return (
-      <div className="space-y-8">
-        {/* Prize Winners */}
-        {seasonSummary.prizes.length > 0 && (
-          <div>
-            <h3 className="text-lg font-heading mb-4 text-center">
-              {seasonSummary.isLeagueEnded ? "Prize Winners" : "Current Prize Leaders"}
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {seasonSummary.prizes.map((prize) => (
-                <PrizeCard key={prize.prize} prize={prize} />
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Final Standings Table */}
-        {seasonSummary.standings.length > 0 && (
-          <div>
-            <h3 className="text-lg font-heading mb-4 text-center">
-              {seasonSummary.isLeagueEnded ? "Final Standings" : "Current Standings"}
-            </h3>
-            <div className="overflow-x-auto">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="bg-retro-orange text-white border-b-2 border-black">
-                    <th className="p-3 text-left font-heading border-r-2 border-black">Rank</th>
-                    <th className="p-3 text-left font-heading border-r-2 border-black">Player</th>
-                    <th className="p-3 text-center font-heading border-r-2 border-black">Pts (Elim)</th>
-                    <th className="p-3 text-center font-heading border-r-2 border-black">Total Pts</th>
-                    <th className="p-3 text-center font-heading border-r-2 border-black">Strikes</th>
-                    <th className="p-3 text-center font-heading">Week Out</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y-2 divide-black">
-                  {seasonSummary.standings.map((player) => (
-                    <tr key={player.userId} className="hover:bg-accent/50">
-                      <td className="p-3 border-r-2 border-black">
-                        <div className="flex items-center gap-2">
-                          {player.rank === 1 && <Trophy className="h-4 w-4 text-retro-yellow" />}
-                          {player.rank === 2 && <Medal className="h-4 w-4 text-gray-400" />}
-                          <span className="font-heading">#{player.rank}</span>
-                        </div>
-                      </td>
-                      <td className="p-3 font-medium border-r-2 border-black">{player.playerName}</td>
-                      <td className="p-3 text-center border-r-2 border-black font-bold">{player.pointsAtElimination}</td>
-                      <td className="p-3 text-center border-r-2 border-black">{player.totalPoints}</td>
-                      <td className="p-3 text-center border-r-2 border-black">
-                        <span className={player.strikes >= 2 ? "text-red-500 font-bold" : ""}>
-                          {player.strikes}
-                        </span>
-                      </td>
-                      <td className="p-3 text-center">
-                        {player.weekEliminated ? (
-                          <Badge variant="destructive" className="border-2 border-black">
-                            Week {player.weekEliminated}
-                          </Badge>
-                        ) : (
-                          <Badge variant="success" className="border-2 border-black">
-                            Active
-                          </Badge>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {seasonSummary.prizes.map((prize) => (
+          <PrizeCard key={prize.prize} prize={prize} />
+        ))}
       </div>
     )
   }
+
+  // Standings table only -- likewise headed by the stepper ("Current Standings"
+  // / "Final Standings"), so no inner header here.
+  const StandingsTab = () => {
+    if (!seasonSummary || seasonSummary.standings.length === 0) {
+      return (
+        <div className="text-center py-16">
+          <div className="text-6xl mb-4">📊</div>
+          <h3 className="text-xl font-heading mb-2">No Standings Yet</h3>
+          <p className="text-muted-foreground">
+            Standings will appear here once gameweeks are completed.
+          </p>
+        </div>
+      )
+    }
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-retro-orange text-white border-b-2 border-black">
+              <th className="p-3 text-left font-heading border-r-2 border-black">Rank</th>
+              <th className="p-3 text-left font-heading border-r-2 border-black">Player</th>
+              <th className="p-3 text-center font-heading border-r-2 border-black">Pts (Elim)</th>
+              <th className="p-3 text-center font-heading border-r-2 border-black">Total Pts</th>
+              <th className="p-3 text-center font-heading border-r-2 border-black">Strikes</th>
+              <th className="p-3 text-center font-heading">Week Out</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y-2 divide-black">
+            {seasonSummary.standings.map((player) => (
+              <tr key={player.userId} className="hover:bg-accent/50">
+                <td className="p-3 border-r-2 border-black">
+                  <div className="flex items-center gap-2">
+                    {player.rank === 1 && <Trophy className="h-4 w-4 text-retro-yellow" />}
+                    {player.rank === 2 && <Medal className="h-4 w-4 text-gray-400" />}
+                    <span className="font-heading">#{player.rank}</span>
+                  </div>
+                </td>
+                <td className="p-3 font-medium border-r-2 border-black">{player.playerName}</td>
+                <td className="p-3 text-center border-r-2 border-black font-bold">{player.pointsAtElimination}</td>
+                <td className="p-3 text-center border-r-2 border-black">{player.totalPoints}</td>
+                <td className="p-3 text-center border-r-2 border-black">
+                  <span className={player.strikes >= 2 ? "text-red-500 font-bold" : ""}>
+                    {player.strikes}
+                  </span>
+                </td>
+                <td className="p-3 text-center">
+                  {player.weekEliminated ? (
+                    <Badge variant="destructive" className="border-2 border-black">
+                      Week {player.weekEliminated}
+                    </Badge>
+                  ) : (
+                    <Badge variant="success" className="border-2 border-black">
+                      Active
+                    </Badge>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  // Ordered subtabs for the arrow stepper. Labels track league state: once the
+  // league has ended the leaders/standings become the final winners/standings.
+  const isEnded = !!seasonSummary?.isLeagueEnded
+  const RESULTS_TABS: { id: TabId; label: string }[] = [
+    { id: "pick-history", label: "Pick History" },
+    { id: "prize-leaders", label: isEnded ? "Prize Winners" : "Prize Leaders" },
+    { id: "standings", label: isEnded ? "Final Standings" : "Current Standings" },
+  ]
 
   const tabIndex = RESULTS_TABS.findIndex((t) => t.id === activeTab)
   const prevTab = tabIndex > 0 ? RESULTS_TABS[tabIndex - 1] : undefined
@@ -333,8 +338,10 @@ function ResultsContent() {
             </div>
           ) : activeTab === "pick-history" ? (
             <PickHistoryTab />
+          ) : activeTab === "prize-leaders" ? (
+            <PrizeLeadersTab />
           ) : (
-            <SeasonSummaryTab />
+            <StandingsTab />
           )}
         </CardContent>
       </Card>
