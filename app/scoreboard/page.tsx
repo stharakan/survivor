@@ -17,6 +17,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Trophy, UserPlus, X, Bot } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { LeagueGuard } from "@/components/league-guard"
+import { PlayerProfileDialog } from "@/components/player-profile-dialog"
 import { hasGameweekStarted } from "@/lib/game-utils"
 
 function ScoreboardContent() {
@@ -29,6 +30,7 @@ function ScoreboardContent() {
   const [showLockScreen, setShowLockScreen] = useState<boolean>(false)
   const [innerCircleOn, setInnerCircleOn] = useState(false)
   const [circle, setCircle] = useState<InnerCircleMember[]>([])
+  const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
   const [addOpen, setAddOpen] = useState(false)
   const router = useRouter()
 
@@ -129,8 +131,8 @@ function ScoreboardContent() {
     }
   }
 
-  const handleRowClick = (playerId: string) => {
-    router.push(`/player?id=${playerId}`)
+  const handleRowClick = (player: Player) => {
+    setSelectedPlayer(player)
   }
 
   const getPickDisplay = (player: Player) => {
@@ -244,7 +246,7 @@ function ScoreboardContent() {
                   <TableRow
                     key={`${player.id}-${index}`}
                     className="border-b-2 border-black cursor-pointer hover:bg-accent/50"
-                    onClick={() => handleRowClick(player.id)}
+                    onClick={() => handleRowClick(player)}
                   >
                     <TableCell className="font-medium">
                       <div className="flex items-center">
@@ -324,6 +326,12 @@ function ScoreboardContent() {
           </CardContent>
         </Card>
       )}
+
+      <PlayerProfileDialog
+        player={selectedPlayer}
+        open={selectedPlayer !== null}
+        onOpenChange={(open) => { if (!open) setSelectedPlayer(null) }}
+      />
     </div>
   )
 }

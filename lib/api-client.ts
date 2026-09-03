@@ -1,6 +1,5 @@
 import type { User } from "@/types/user"
 import type { Player } from "@/types/player"
-import type { PlayerProfile } from "@/types/player-profile"
 import type { Pick } from "@/types/pick"
 import type { Team } from "@/types/team"
 import type { Game } from "@/types/game"
@@ -277,15 +276,6 @@ export async function makePick(userId: string, gameId: number, teamId: number, l
       week: gameWeek,
     }),
   })
-}
-
-export async function getPlayerProfile(playerId: string, leagueId: string): Promise<PlayerProfile | null> {
-  // CR-106: wired up for real. Was a permanently-throwing stub -- the Python
-  // route (api/app/routers/results.py) didn't exist under the old TS backend,
-  // so there was nothing to call. Any active league member may look up any
-  // other member's profile; picks are NOT included (self-only, see
-  // getUserPicks) per CR-105-FINDINGS.md Addendum 2's privacy boundary.
-  return apiRequest(`/league-seasons/${leagueId}/players/${playerId}/profile`)
 }
 
 export async function getSeasonSummary(leagueId: string): Promise<SeasonSummary> {

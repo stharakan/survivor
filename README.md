@@ -85,14 +85,14 @@ alongside the code.
 
 1. **Authentication** — user logs in; the API issues a JWT in an httpOnly `auth-token` cookie.
 2. **League Selection** (`/leagues`) — user picks which league to enter; the choice is persisted in localStorage.
-3. **League-Scoped Experience** — all subsequent pages (`/profile`, `/scoreboard`, `/make-picks`, `/results`, `/player/[id]`, `/admin/*`) are scoped to the selected league; nearly every API call takes a `leagueId`. `LeagueGuard` redirects to `/login` if unauthenticated or `/leagues` if no league is selected; `AdminGuard` additionally requires admin membership.
+3. **League-Scoped Experience** — all subsequent pages (`/profile`, `/scoreboard`, `/make-picks`, `/results`, `/admin/*`) are scoped to the selected league; nearly every API call takes a `leagueId`. `LeagueGuard` redirects to `/login` if unauthenticated or `/leagues` if no league is selected; `AdminGuard` additionally requires admin membership.
 
 ## Directory Map
 
 ```
 app/                    Next.js pages (App Router), all under output: 'export'
   admin/, invite/, leagues/, login/, make-picks/,
-  player/, profile/, register/, reset-password/, results/, rules/, scoreboard/
+  profile/, register/, reset-password/, results/, rules/, scoreboard/
 components/             Shared UI incl. league-guard.tsx, admin-guard.tsx, navbar.tsx
 components/ui/          shadcn/ui, customized for the retro pixel theme
 hooks/                  use-auth.tsx, use-league.tsx (context providers)
