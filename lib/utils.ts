@@ -14,7 +14,6 @@ const ALLOWED_REDIRECT_PATHS = [
   '/scoreboard',
   '/make-picks',
   '/admin',
-  '/picks-remaining',
   '/player',
   '/reset-password',
   '/invite'
